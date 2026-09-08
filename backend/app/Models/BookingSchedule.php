@@ -11,6 +11,7 @@ class BookingSchedule extends Model
         'open_day_from',
         'open_day_to',
         'closed_weekday',
+        'closed_weekdays',
         'opening_time',
         'closing_time',
         'custom_open_time',
@@ -24,6 +25,7 @@ class BookingSchedule extends Model
         'open_day_from' => 'integer',
         'open_day_to' => 'integer',
         'closed_weekday' => 'integer',
+        'closed_weekdays' => 'array',
         'custom_open_times' => 'array',
         'booking_days_ahead' => 'integer',
     ];

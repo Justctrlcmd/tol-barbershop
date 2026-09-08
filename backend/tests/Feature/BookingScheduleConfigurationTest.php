@@ -31,7 +31,7 @@ function schedulePayload(array $overrides = []): array
     return [
         'open_day_from' => 1,
         'open_day_to' => 7,
-        'closed_weekday' => 7,
+        'closed_weekdays' => [7],
         'opening_time' => '09:00',
         'closing_time' => '19:00',
         'custom_open_times' => ['12:30'],
@@ -48,6 +48,7 @@ test('whole-operation schedule validates dependent ranges and booking window', f
         ->assertJsonPath('data.open_day_from', 1)
         ->assertJsonPath('data.open_day_to', 7)
         ->assertJsonPath('data.closed_weekday', 7)
+        ->assertJsonPath('data.closed_weekdays', [7])
         ->assertJsonPath('data.custom_open_time', '12:30')
         ->assertJsonPath('data.custom_open_times', ['12:30'])
         ->assertJsonPath('data.booking_days_ahead', 7);
@@ -135,6 +136,30 @@ test('recurring custom time applies to every open date from today forward', func
         ->assertJsonFragment(['14:30'])
         ->assertJsonFragment(['15:35'])
         ->assertJsonMissing(['12:00']);
+});
+
+test('multiple recurring closed days prevent bookings on every selected weekday', function () {
+    $manager = scheduleUser('manager');
+    $barber = scheduleUser('barber');
+    Sanctum::actingAs($manager);
+
+    $this->putJson('/api/v1/booking-schedule', schedulePayload([
+        'closed_weekdays' => [2, 5],
+    ]))
+        ->assertOk()
+        ->assertJsonPath('data.closed_weekdays', [2, 5]);
+
+    $this->getJson("/api/v1/public-booking/available-slots?barber_id={$barber->id}&date=2026-09-08")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('date');
+
+    $this->getJson("/api/v1/public-booking/available-slots?barber_id={$barber->id}&date=2026-09-11")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('date');
+
+    $this->getJson("/api/v1/public-booking/available-slots?barber_id={$barber->id}&date=2026-09-09")
+        ->assertOk()
+        ->assertJsonFragment(['09:00']);
 });
 
 test('custom times and open slots must use five-minute increments', function () {

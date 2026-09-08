@@ -16,7 +16,8 @@ class BookingScheduleRequest extends FormRequest
         return [
             'open_day_from' => ['required', 'integer', 'between:1,7'],
             'open_day_to' => ['required', 'integer', 'between:1,7', 'gte:open_day_from'],
-            'closed_weekday' => ['nullable', 'integer', 'between:1,7'],
+            'closed_weekdays' => ['required', 'array', 'max:7'],
+            'closed_weekdays.*' => ['required', 'integer', 'distinct', 'between:1,7'],
             'opening_time' => ['required', 'date_format:H:i', 'regex:/^(?:[01]\d|2[0-3]):00$/'],
             'closing_time' => ['required', 'date_format:H:i', 'regex:/^(?:[01]\d|2[0-3]):00$/', 'gte:opening_time'],
             'custom_open_times' => ['required', 'array', 'min:1', 'max:24'],
@@ -35,16 +36,16 @@ class BookingScheduleRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator): void {
-            $closedWeekday = $this->integer('closed_weekday');
-
-            if ($this->filled('closed_weekday') && (
-                $closedWeekday < $this->integer('open_day_from')
-                || $closedWeekday > $this->integer('open_day_to')
-            )) {
-                $validator->errors()->add(
-                    'closed_weekday',
-                    'The closed day must be within the selected open-day range.',
-                );
+            foreach ($this->input('closed_weekdays', []) as $index => $closedWeekday) {
+                if (
+                    $closedWeekday < $this->integer('open_day_from')
+                    || $closedWeekday > $this->integer('open_day_to')
+                ) {
+                    $validator->errors()->add(
+                        "closed_weekdays.{$index}",
+                        'Each closed day must be within the selected open-day range.',
+                    );
+                }
             }
         });
     }
@@ -57,6 +58,7 @@ class BookingScheduleRequest extends FormRequest
             'custom_open_times.*.gte' => 'Each custom time must be within the working hours.',
             'custom_open_times.*.lte' => 'Each custom time must be within the working hours.',
             'custom_open_times.*.distinct' => 'Each custom time must be unique.',
+            'closed_weekdays.*.distinct' => 'Each closed day must be unique.',
             'booking_days_ahead.between' => 'Booking days in advance must be between 1 and 30.',
         ];
     }

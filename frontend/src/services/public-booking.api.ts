@@ -19,6 +19,7 @@ export type PublicBookingSettings = {
   open_day_from: number;
   open_day_to: number;
   closed_weekday: number | null;
+  closed_weekdays: number[];
   opening_time: string;
   closing_time: string;
   custom_open_time: string;

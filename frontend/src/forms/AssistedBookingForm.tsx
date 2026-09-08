@@ -192,7 +192,7 @@ export function AssistedBookingForm({
       !hasCustomSlot &&
       (isoWeekday < settings.open_day_from ||
         isoWeekday > settings.open_day_to ||
-        isoWeekday === settings.closed_weekday)
+        settings.closed_weekdays.includes(isoWeekday))
     );
   };
 
@@ -244,8 +244,8 @@ export function AssistedBookingForm({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && closeForm()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-2xl">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <CalendarPlus className="size-5 text-blue-600" />
             Assisted Booking
@@ -256,8 +256,8 @@ export function AssistedBookingForm({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(submit)} className="space-y-5">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <form onSubmit={handleSubmit(submit)} className="flex min-h-0 flex-1 flex-col">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto pb-5 pr-1 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <InputWithLabel
                 id="assisted-customer-name"
@@ -422,24 +422,23 @@ export function AssistedBookingForm({
             </p>
           </div>
 
-        
-            <DialogFooter className="w-full gap-2 sm:w-auto">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={closeForm}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="bg-blue-600 text-white hover:bg-blue-700"
-              >
-                {isSubmitting ? "Reserving..." : "Confirm Booking"}
-              </Button>
-            </DialogFooter>
+          <DialogFooter className="shrink-0 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeForm}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {isSubmitting ? "Reserving..." : "Confirm Booking"}
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

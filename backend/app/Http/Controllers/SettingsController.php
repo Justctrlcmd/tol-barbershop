@@ -77,7 +77,7 @@ class SettingsController extends Controller
             $operatingScheduleChanged = collect([
                 'open_day_from',
                 'open_day_to',
-                'closed_weekday',
+                'closed_weekdays',
                 'opening_time',
                 'closing_time',
                 'custom_open_times',
@@ -93,6 +93,7 @@ class SettingsController extends Controller
                 ->first();
             $data = [
                 ...$validated,
+                'closed_weekday' => $validated['closed_weekdays'][0] ?? null,
                 'custom_open_time' => $validated['custom_open_times'][0],
                 'created_by_user_id' => $request->user()?->id,
             ];

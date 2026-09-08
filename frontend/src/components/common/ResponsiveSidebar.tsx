@@ -11,7 +11,6 @@ import {
   Menu,
   MoreHorizontal,
   UserRound,
-  X,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -278,13 +277,6 @@ export function ResponsiveSidebar({
               TOL Barbershop
             </h1>
           </div>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="md:hidden p-2 rounded-lg hover:bg-slate-800 text-primary-foreground transition-colors"
-            aria-label="Close menu"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
         <nav

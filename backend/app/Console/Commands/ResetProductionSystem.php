@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AppointmentFeedback;
 use App\Models\BookingSchedule;
 use App\Models\GalleryImage;
 use App\Models\User;
@@ -16,6 +17,27 @@ use Throwable;
 
 class ResetProductionSystem extends Command
 {
+    private array $featuredFeedbackComments = [
+        'Ang linis ng fade, sakto yung haba at hindi minadali.',
+        'Magaan kamay ng barber, comfortable buong gupit.',
+        'Nagustuhan ko na sinusunod talaga yung style na gusto ko.',
+        'Malinis yung shop at maayos kausap yung staff, good experience overall.',
+        'First time ko dito pero satisfied ako, babalik ulit ako next haircut.',
+    ];
+
+    private array $feedbackNames = [
+        'Adrian Cruz',
+        'Carlo Mendoza',
+        'Gabriel Santos',
+        'Joshua Reyes',
+        'Luis Garcia',
+        'Marco Villanueva',
+        'Miguel Ramos',
+        'Paolo Navarro',
+        'Rafael Castillo',
+        'Vincent Flores',
+    ];
+
     protected $signature = 'system:fresh-start
         {--confirm-production : Confirm that the production database and gallery may be erased}';
 
@@ -69,6 +91,7 @@ class ResetProductionSystem extends Command
                         'open_day_from' => 1,
                         'open_day_to' => 7,
                         'closed_weekday' => 7,
+                        'closed_weekdays' => [7],
                         'opening_time' => '09:00',
                         'closing_time' => '19:00',
                         'custom_open_time' => '12:30',
@@ -78,12 +101,15 @@ class ResetProductionSystem extends Command
                     ],
                 );
 
+                $this->createFeaturedFeedback();
+
                 return $user;
             });
 
             $this->newLine();
             $this->info('Fresh start completed successfully.');
             $this->line('Manager: '.Str::lower($createdManager->email));
+            $this->line('Featured feedback: 5 standalone five-star reviews');
             $this->line('Business data such as services, barbers, add-ons, and Gallery images is empty.');
 
             return self::SUCCESS;
@@ -157,5 +183,22 @@ class ResetProductionSystem extends Command
         }
 
         return $publicIds->count();
+    }
+
+    private function createFeaturedFeedback(): void
+    {
+        $names = collect($this->feedbackNames)->shuffle()->take(5)->values();
+
+        foreach ($this->featuredFeedbackComments as $index => $comment) {
+            AppointmentFeedback::create([
+                'appointment_id' => null,
+                'batch_id' => null,
+                'booking_customer_id' => null,
+                'rating' => 5,
+                'comment' => $comment,
+                'is_featured' => true,
+                'customer_name_snapshot' => $names[$index],
+            ]);
+        }
     }
 }
