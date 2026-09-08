@@ -114,7 +114,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/booking-schedule/day', [SettingsController::class, 'day'])
             ->middleware(['role:admin,manager', 'module:management,management-schedule,appointment,walkin', 'throttle:authenticated-read']);
         Route::put('/booking-schedule', [SettingsController::class, 'update'])
-            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-write']);
+            ->middleware(['role:manager', 'throttle:authenticated-write']);
         Route::get('/schedule-open-slots', [ScheduleOpenSlotController::class, 'index'])
             ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-read']);
         Route::post('/schedule-open-slots', [ScheduleOpenSlotController::class, 'store'])

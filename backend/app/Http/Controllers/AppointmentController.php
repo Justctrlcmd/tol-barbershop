@@ -466,7 +466,7 @@ class AppointmentController extends Controller
                     $barber = $resources['barber'];
                     $customer = $resources['customer'];
                 } else {
-                    $service = Service::findOrFail($appointment->service_id);
+                    $service = Service::withTrashed()->findOrFail($appointment->service_id);
                     $barber = User::withTrashed()->findOrFail($appointment->barber_user_id);
                     $customer = $appointment->bookingCustomer()->first();
                 }

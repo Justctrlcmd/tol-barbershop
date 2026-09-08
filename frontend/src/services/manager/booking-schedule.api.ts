@@ -7,6 +7,7 @@ export type BookingSchedule = {
   opening_time: string;
   closing_time: string;
   custom_open_time: string;
+  custom_open_times: string[];
   booking_days_ahead: number;
   slot_interval_minutes: number;
   max_slots_per_booking: number;
@@ -20,7 +21,7 @@ export type UpdateBookingScheduleData = Pick<
   | "closed_weekday"
   | "opening_time"
   | "closing_time"
-  | "custom_open_time"
+  | "custom_open_times"
   | "booking_days_ahead"
 >;
 

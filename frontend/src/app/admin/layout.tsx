@@ -7,6 +7,7 @@ import {
   BarChart3,
   Calendar,
   Clock3,
+  Contact,
   History,
   Images,
   LayoutDashboard,
@@ -49,11 +50,7 @@ const navSections = [
       { key: "appointment", href: "/admin/appointment", icon: Calendar, label: "Schedules" },
       { key: "walkin", href: "/admin/walkin", icon: UserPlus, label: "Walkin" },
       { key: "history", href: "/admin/history", icon: History, label: "History" },
-    ],
-  },
-  {
-    label: "Administration",
-    items: [
+      { key: "crm", href: "/admin/customers", icon: Contact, label: "Customers" },
       {
         key: "management",
         href: "/admin/management",

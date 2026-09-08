@@ -7,7 +7,10 @@ export const bookingScheduleSchema = z
     closed_weekday: z.number().int().min(1).max(7).nullable(),
     opening_time: z.string().regex(/^(?:[01]\d|2[0-3]):00$/),
     closing_time: z.string().regex(/^(?:[01]\d|2[0-3]):00$/),
-    custom_open_time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
+    custom_open_times: z
+      .array(z.string().regex(/^(?:[01]\d|2[0-3]):(?:00|05|10|15|20|25|30|35|40|45|50|55)$/))
+      .min(1)
+      .max(24),
     booking_days_ahead: z.number().int().min(1).max(30),
   })
   .superRefine((schedule, context) => {
@@ -25,14 +28,20 @@ export const bookingScheduleSchema = z
         message: "The closing time cannot be earlier than the opening time.",
       });
     }
-    if (
-      schedule.custom_open_time < schedule.opening_time
-      || schedule.custom_open_time > schedule.closing_time
-    ) {
+    schedule.custom_open_times.forEach((customTime, index) => {
+      if (customTime < schedule.opening_time || customTime > schedule.closing_time) {
+        context.addIssue({
+          code: "custom",
+          path: ["custom_open_times", index],
+          message: "Each custom time must be within the working hours.",
+        });
+      }
+    });
+    if (new Set(schedule.custom_open_times).size !== schedule.custom_open_times.length) {
       context.addIssue({
         code: "custom",
-        path: ["custom_open_time"],
-        message: "The custom time must be within the working hours.",
+        path: ["custom_open_times"],
+        message: "Each custom time must be unique.",
       });
     }
     if (
@@ -54,6 +63,6 @@ export const scheduleOpenSlotSchema = z.object({
   slot_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   barber_user_ids: z.array(z.number().int().positive()).min(1),
   hour: z.number().int().min(1).max(12),
-  minute: z.number().int().min(0).max(59),
+  minute: z.number().int().min(0).max(55).multipleOf(5),
   period: z.enum(["AM", "PM"]),
 });

@@ -19,6 +19,13 @@ const formatDateToLocal = (date: Date): string => {
   );
 };
 
+const formatDateForDisplay = (date: Date): string =>
+  date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  });
+
 type DatePickerWithLabelProps = {
   id: string;
   label: string;
@@ -125,7 +132,7 @@ export function DatePickerWithLabel({
                 selectedDate ? "text-foreground" : "text-muted-foreground"
               }
             >
-              {selectedDate ? selectedDate.toLocaleDateString() : placeholder}
+              {selectedDate ? formatDateForDisplay(selectedDate) : placeholder}
             </span>
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           </Button>

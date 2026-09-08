@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Appointment;
 use App\Models\ClosedDates;
 use App\Models\Module;
 use App\Models\PushSubscription;
@@ -261,7 +262,7 @@ test('password changes preserve the current token and revoke other sessions and 
     $this->assertDatabaseMissing('sessions', ['user_id' => $user->id]);
 });
 
-test('deleting a service archives it without removing its record', function () {
+test('deleting a service soft deletes it without removing its record', function () {
     $manager = User::factory()->create(['role' => 'manager']);
     $service = Service::create([
         'name' => 'Archive Haircut',
@@ -270,16 +271,29 @@ test('deleting a service archives it without removing its record', function () {
         'price' => 200,
         'is_active' => true,
     ]);
+    $appointment = Appointment::create([
+        'service_id' => $service->id,
+        'barber_user_id' => $manager->id,
+        'appointment_date' => now()->toDateString(),
+        'appointment_time' => '09:00',
+        'duration_minutes' => 30,
+        'price' => 200,
+        'status' => 'completed',
+        'service_name_snapshot' => $service->name,
+    ]);
     Sanctum::actingAs($manager);
 
     $this->deleteJson("/api/v1/services/{$service->id}")
         ->assertOk()
-        ->assertJsonPath('message', 'Service archived successfully');
+        ->assertJsonPath('message', 'Service deleted successfully');
 
-    $this->assertDatabaseHas('services', [
-        'id' => $service->id,
-        'is_active' => false,
-    ]);
+    $this->assertSoftDeleted('services', ['id' => $service->id]);
+    expect(Service::withTrashed()->find($service->id))->not->toBeNull()
+        ->and($appointment->fresh()->service?->id)->toBe($service->id);
+
+    $this->getJson('/api/v1/services')
+        ->assertOk()
+        ->assertJsonMissing(['id' => $service->id]);
 });
 
 test('deactivating an admin revokes sessions tokens and push subscriptions', function () {

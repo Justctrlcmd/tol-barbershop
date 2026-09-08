@@ -29,8 +29,8 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Production
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Production is served at `https://tolbarbershop.com` behind Nginx. Next.js handles `/`, while Nginx routes `/api/v1/*` and `/sanctum/*` directly to Laravel and serves Laravel public storage at `/storage/*`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Use `NEXT_PUBLIC_API_URL=/api/v1` and leave `NEXT_PUBLIC_API_ORIGIN` unset or empty in production. See the [production runbook](../PRODUCTION.md) for the complete deployment process.

@@ -80,7 +80,7 @@ class SettingsController extends Controller
                 'closed_weekday',
                 'opening_time',
                 'closing_time',
-                'custom_open_time',
+                'custom_open_times',
             ])->contains(fn (string $key): bool => $this->normalizedValue($current->{$key}) !== $this->normalizedValue($validated[$key]));
 
             if ($operatingScheduleChanged) {
@@ -93,6 +93,7 @@ class SettingsController extends Controller
                 ->first();
             $data = [
                 ...$validated,
+                'custom_open_time' => $validated['custom_open_times'][0],
                 'created_by_user_id' => $request->user()?->id,
             ];
 
@@ -150,6 +151,10 @@ class SettingsController extends Controller
 
     private function normalizedValue(mixed $value): string
     {
+        if (is_array($value)) {
+            return json_encode(array_values($value)) ?: '';
+        }
+
         return substr((string) $value, 0, str_contains((string) $value, ':') ? 5 : strlen((string) $value));
     }
 }

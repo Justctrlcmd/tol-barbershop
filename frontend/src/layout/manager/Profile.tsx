@@ -1,8 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { KeyRound, Save, ShieldCheck, UserRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -28,7 +27,6 @@ import {
 
 export function Profile() {
   const { user, refreshUser } = useAuth();
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const profileRateLimit = useRateLimit({
     maxAttempts: 5,
     cooldownMinutes: 1,
@@ -126,42 +124,38 @@ export function Profile() {
 
   return (
     <div className="min-h-full bg-slate-100 p-4 font-sans sm:p-6">
-      <div className="mx-auto max-w-4xl">
-        <div className="mb-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
             Profile
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Update your staff credentials and account security.
+          <p className="mt-1 text-gray-500">
+            Manage your account details and password.
           </p>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[1fr_18rem]">
+        <div className="grid items-stretch gap-5 lg:grid-cols-2">
           <form
             onSubmit={handleSubmit(updateInformation)}
-            className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6"
+            className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7"
           >
-            <div className="mb-5 flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-slate-100 text-primary">
-                <UserRound className="size-5" />
-              </div>
-              <div>
-                <h2 className="font-bold text-gray-900">
-                  Account Information
-                </h2>
-                <p className="text-sm text-gray-500">
-                  Keep your staff details up to date.
-                </p>
-              </div>
+            <div className="mb-6">
+              <h2 className="text-xl font-bold text-gray-900">
+                Account details
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Changing your email requires your current password.
+              </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
+            <div className="space-y-5">
+              <div>
                 <InputWithLabel
                   id="fullname"
-                  label="Full Name"
+                  label="Name *"
                   autoComplete="name"
                   maxLength={255}
+                  className="h-11"
                   aria-invalid={Boolean(errors.fullname)}
                   {...register("fullname")}
                 />
@@ -175,10 +169,11 @@ export function Profile() {
               <div>
                 <InputWithLabel
                   id="email"
-                  label="Email Address"
+                  label="Email *"
                   type="email"
                   autoComplete="email"
                   maxLength={255}
+                  className="h-11"
                   aria-invalid={Boolean(errors.email)}
                   {...register("email")}
                 />
@@ -193,12 +188,13 @@ export function Profile() {
                 <div>
                   <InputWithLabel
                     id="contact_number"
-                    label="Contact Number"
+                    label="Contact number"
                     type="tel"
                     inputMode="numeric"
                     autoComplete="tel"
                     maxLength={11}
                     placeholder="09XXXXXXXXX"
+                    className="h-11"
                     aria-invalid={Boolean(errors.contact_number)}
                     {...register("contact_number")}
                   />
@@ -211,13 +207,14 @@ export function Profile() {
               )}
 
               {emailChanged && (
-                <div className="sm:col-span-2">
+                <div>
                   <PasswordInputWithLabel
                     id="current_password"
-                    label="Current Password"
+                    label="Current password *"
                     placeholder="Required to change your email"
                     autoComplete="current-password"
                     maxLength={255}
+                    className="h-11"
                     aria-invalid={Boolean(errors.current_password)}
                     {...register("current_password")}
                   />
@@ -230,40 +227,24 @@ export function Profile() {
               )}
             </div>
 
-            <div className="mt-6 flex justify-end">
+            <div className="mt-7">
               <Button type="submit" disabled={isSubmitting}>
-                <Save className="size-4" />
-                {isSubmitting ? "Saving..." : "Save Changes"}
+                {isSubmitting ? "Saving..." : "Save profile"}
               </Button>
             </div>
           </form>
 
-          <section className="h-fit rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-            <div className="flex size-10 items-center justify-center rounded-full bg-slate-100 text-primary">
-              <ShieldCheck className="size-5" />
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7">
+            <div className="mb-6">
+              <h2 className="text-xl font-bold text-gray-900">Password</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Use a unique password you do not use elsewhere.
+              </p>
             </div>
-            <h2 className="mt-4 font-bold text-gray-900">Password</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Use your current password to set a new one.
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-5 w-full"
-              onClick={() => setChangePasswordOpen(true)}
-            >
-              <KeyRound className="size-4" />
-              Change Password
-            </Button>
+            <ChangePasswordForm onSubmit={updatePassword} />
           </section>
         </div>
       </div>
-
-      <ChangePasswordForm
-        open={changePasswordOpen}
-        onClose={() => setChangePasswordOpen(false)}
-        onSubmit={updatePassword}
-      />
     </div>
   );
 }

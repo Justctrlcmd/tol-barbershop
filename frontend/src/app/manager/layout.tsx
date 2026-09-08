@@ -5,6 +5,7 @@ import { useRealtimeEvent } from "@/contexts/RealtimeContext";
 import {
   BriefcaseBusiness,
   Clock3,
+  Contact,
   History,
   Images,
   UserPlus,
@@ -34,11 +35,7 @@ const navSections = [
       { key: "appointment", href: "/manager/appointment", icon: BriefcaseBusiness, label: "Schedules" },
       { key: "walkin", href: "/manager/walkin", icon: UserPlus, label: "Walkin" },
       { key: "history", href: "/manager/history", icon: History, label: "History" },
-    ],
-  },
-  {
-    label: "Administration",
-    items: [
+      { key: "crm", href: "/manager/customers", icon: Contact, label: "Customers" },
       {
         key: "management",
         href: "/manager/management",

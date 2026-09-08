@@ -24,7 +24,7 @@ function formatDateValue(d: Date | undefined): string {
 
 function formatDateDisplay(d: Date | undefined): string {
   if (!d || !isValid(d)) return "";
-  return format(d, "MMM d, yyyy");
+  return format(d, "MMM dd, yyyy");
 }
 
 const PRESETS = [

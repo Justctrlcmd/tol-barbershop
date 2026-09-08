@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   getCustomerDetail,
   type CustomerDetail as CustomerDetailType,
@@ -130,6 +130,7 @@ type CustomerDetailProps = {
 }
 
 export function CustomerDetail({ id }: CustomerDetailProps) {
+  const pathname = usePathname();
   const router = useRouter();
   const [customer, setCustomer] = useState<CustomerDetailType | null>(null);
   const [loading, setLoading] = useState(true);
@@ -195,7 +196,13 @@ export function CustomerDetail({ id }: CustomerDetailProps) {
   return (
     <div className="w-full h-full bg-slate-100 p-4 sm:p-6 pb-12 sm:pb-10 font-sans">
       <button
-        onClick={() => router.push("/manager/customers")}
+        onClick={() =>
+          router.push(
+            pathname.startsWith("/admin/")
+              ? "/admin/customers"
+              : "/manager/customers",
+          )
+        }
         className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4 transition"
       >
         <ArrowLeft className="h-4 w-4" />

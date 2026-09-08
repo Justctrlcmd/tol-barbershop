@@ -14,6 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import { ActivityLog } from "@/components/common/ActivityLog";
 import { DatePickerWithLabel } from "@/components/common/DatePickerWithLabel";
 import { ClosedDateForm } from "@/forms/ClosedDateForm";
@@ -78,9 +79,9 @@ const TWELVE_HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => ({
   label: String(index + 1),
 }));
 
-const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, minute) => ({
-  value: String(minute),
-  label: String(minute).padStart(2, "0"),
+const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, index) => ({
+  value: String(index * 5),
+  label: String(index * 5).padStart(2, "0"),
 }));
 
 const BOOKING_WINDOW_OPTIONS = Array.from({ length: 30 }, (_, index) => {
@@ -98,7 +99,7 @@ const defaultSchedule: UpdateBookingScheduleData = {
   closed_weekday: 7,
   opening_time: "09:00",
   closing_time: "19:00",
-  custom_open_time: "12:30",
+  custom_open_times: ["12:30"],
   booking_days_ahead: 7,
 };
 
@@ -141,20 +142,52 @@ function clampTime(value: string, openingTime: string, closingTime: string): str
 
 function withCustomOpenTime(
   schedule: UpdateBookingScheduleData,
+  index: number,
   changes: Partial<TimeSelection>,
 ): UpdateBookingScheduleData {
   const customOpenTime = toTwentyFourHourTime({
-    ...toTimeSelection(schedule.custom_open_time),
+    ...toTimeSelection(schedule.custom_open_times[index]),
     ...changes,
   });
 
   return {
     ...schedule,
-    custom_open_time: clampTime(customOpenTime, schedule.opening_time, schedule.closing_time),
+    custom_open_times: schedule.custom_open_times.map((time, timeIndex) => (
+      timeIndex === index
+        ? clampTime(customOpenTime, schedule.opening_time, schedule.closing_time)
+        : time
+    )),
   };
 }
 
+function addCustomOpenTime(schedule: UpdateBookingScheduleData): UpdateBookingScheduleData {
+  const selectedTimes = new Set(schedule.custom_open_times);
+  const lastTime = schedule.custom_open_times.at(-1) ?? schedule.opening_time;
+  const [hour, minute] = lastTime.split(":").map(Number);
+  const start = (hour * 60) + minute;
+
+  for (let offset = 5; offset < 1440; offset += 5) {
+    const candidateMinutes = (start + offset) % 1440;
+    const candidate = `${String(Math.floor(candidateMinutes / 60)).padStart(2, "0")}:${String(candidateMinutes % 60).padStart(2, "0")}`;
+
+    if (
+      candidate >= schedule.opening_time
+      && candidate <= schedule.closing_time
+      && !selectedTimes.has(candidate)
+    ) {
+      return {
+        ...schedule,
+        custom_open_times: [...schedule.custom_open_times, candidate],
+      };
+    }
+  }
+
+  return schedule;
+}
+
 export function Slots() {
+  const { user } = useAuth();
+  const canConfigureOperation = user?.role === "manager";
   const [showClosedDateModal, setShowClosedDateModal] = useState(false);
   const [closedDates, setClosedDates] = useState<ClosedDate[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -187,7 +220,7 @@ export function Slots() {
   const [openSlotMinute, setOpenSlotMinute] = useState(0);
   const [openSlotPeriod, setOpenSlotPeriod] = useState<"AM" | "PM">("PM");
   const [isSavingOpenSlot, setIsSavingOpenSlot] = useState(false);
-  const customTime = toTimeSelection(scheduleDraft.custom_open_time);
+  const customTimes = scheduleDraft.custom_open_times.map(toTimeSelection);
 
   const scheduleInfo = [
     {
@@ -216,13 +249,6 @@ export function Slots() {
       iconBg: "bg-violet-100",
     },
     {
-      icon: Clock,
-      label: "Custom Time",
-      value: schedule ? formatScheduleTime(schedule.custom_open_time) : "Loading...",
-      accent: "bg-amber-50 text-amber-600",
-      iconBg: "bg-amber-100",
-    },
-    {
       icon: Ban,
       label: "Recurring Closed Day",
       value: schedule?.closed_weekday
@@ -231,6 +257,21 @@ export function Slots() {
       accent: "bg-red-50 text-red-500",
       iconBg: "bg-red-100",
     },
+    ...(schedule
+      ? schedule.custom_open_times.map((customTime) => ({
+        icon: Clock,
+        label: "Custom Time",
+        value: formatScheduleTime(customTime),
+        accent: "bg-amber-50 text-amber-600",
+        iconBg: "bg-amber-100",
+      }))
+      : [{
+        icon: Clock,
+        label: "Custom Time",
+        value: "Loading...",
+        accent: "bg-amber-50 text-amber-600",
+        iconBg: "bg-amber-100",
+      }]),
   ];
 
   const fetchScheduleData = useCallback(async () => {
@@ -392,6 +433,11 @@ export function Slots() {
   };
 
   const handleScheduleSave = async () => {
+    if (!canConfigureOperation) {
+      toast.error("Only managers can configure the operation schedule.");
+      return;
+    }
+
     const validation = bookingScheduleSchema.safeParse(scheduleDraft);
     if (!validation.success) {
       toast.error(validation.error.issues[0]?.message ?? "Check the schedule configuration.");
@@ -590,9 +636,16 @@ export function Slots() {
                 Current operating schedule for bookings
               </p>
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => setShowScheduleModal(true)}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowScheduleModal(true)}
+              disabled={!canConfigureOperation}
+              title={canConfigureOperation ? undefined : "Only managers can configure the operation schedule."}
+            >
               <Settings className="size-4" />
-              Configure
+              {canConfigureOperation ? "Configure" : "Manager only"}
             </Button>
           </div>
 
@@ -600,7 +653,7 @@ export function Slots() {
             {scheduleInfo.map(
               ({ icon: Icon, label, value, accent, iconBg }) => (
                 <div
-                  key={label}
+                  key={`${label}-${value}`}
                   className="flex items-center gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3.5 hover:bg-slate-100 transition-colors"
                 >
                   <div className={cn(iconBg, "rounded-lg p-2 shrink-0")}>
@@ -684,7 +737,10 @@ export function Slots() {
         onSubmit={handleClosedDateSubmit}
       />
 
-      <Dialog open={showScheduleModal} onOpenChange={(open) => !isSavingSchedule && setShowScheduleModal(open)}>
+      <Dialog
+        open={canConfigureOperation && showScheduleModal}
+        onOpenChange={(open) => !isSavingSchedule && canConfigureOperation && setShowScheduleModal(open)}
+      >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Schedule Configuration</DialogTitle>
@@ -766,11 +822,11 @@ export function Slots() {
                 ...current,
                 opening_time: value,
                 closing_time: current.closing_time < value ? value : current.closing_time,
-                custom_open_time: clampTime(
-                  current.custom_open_time,
+                custom_open_times: current.custom_open_times.map((time) => clampTime(
+                  time,
                   value,
                   current.closing_time < value ? value : current.closing_time,
-                ),
+                )),
               }))}
             />
             <SelectWithLabel
@@ -784,7 +840,11 @@ export function Slots() {
               onValueChange={(value) => setScheduleDraft((current) => ({
                 ...current,
                 closing_time: value,
-                custom_open_time: clampTime(current.custom_open_time, current.opening_time, value),
+                custom_open_times: current.custom_open_times.map((time) => clampTime(
+                  time,
+                  current.opening_time,
+                  value,
+                )),
               }))}
             />
             <div className="space-y-3 sm:col-span-2">
@@ -794,35 +854,66 @@ export function Slots() {
                   Available for every barber on each open date from today forward.
                 </p>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <SelectWithLabel
-                  id="custom-open-hour"
-                  label="Hour"
-                  value={String(customTime.hour)}
-                  options={TWELVE_HOUR_OPTIONS}
-                  onValueChange={(value) => setScheduleDraft((current) => withCustomOpenTime(current, {
-                    hour: Number(value),
-                  }))}
-                />
-                <SelectWithLabel
-                  id="custom-open-minute"
-                  label="Minute"
-                  value={String(customTime.minute)}
-                  options={MINUTE_OPTIONS}
-                  onValueChange={(value) => setScheduleDraft((current) => withCustomOpenTime(current, {
-                    minute: Number(value),
-                  }))}
-                />
-                <SelectWithLabel
-                  id="custom-open-period"
-                  label="AM / PM"
-                  value={customTime.period}
-                  options={[{ value: "AM", label: "AM" }, { value: "PM", label: "PM" }]}
-                  onValueChange={(value) => setScheduleDraft((current) => withCustomOpenTime(current, {
-                    period: value as "AM" | "PM",
-                  }))}
-                />
+              <div className="space-y-3">
+                {customTimes.map((customTime, index) => (
+                  <div key={`${scheduleDraft.custom_open_times[index]}-${index}`} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-gray-600">
+                        {index === 0 ? "Custom time" : `Custom time ${index + 1}`}
+                      </p>
+                      {index > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setScheduleDraft((current) => ({
+                            ...current,
+                            custom_open_times: current.custom_open_times.filter((_, timeIndex) => timeIndex !== index),
+                          }))}
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <SelectWithLabel
+                        id={`custom-open-hour-${index}`}
+                        label="Hour"
+                        value={String(customTime.hour)}
+                        options={TWELVE_HOUR_OPTIONS}
+                        onValueChange={(value) => setScheduleDraft((current) => withCustomOpenTime(current, index, {
+                          hour: Number(value),
+                        }))}
+                      />
+                      <SelectWithLabel
+                        id={`custom-open-minute-${index}`}
+                        label="Minute"
+                        value={String(customTime.minute)}
+                        options={MINUTE_OPTIONS}
+                        onValueChange={(value) => setScheduleDraft((current) => withCustomOpenTime(current, index, {
+                          minute: Number(value),
+                        }))}
+                      />
+                      <SelectWithLabel
+                        id={`custom-open-period-${index}`}
+                        label="AM / PM"
+                        value={customTime.period}
+                        options={[{ value: "AM", label: "AM" }, { value: "PM", label: "PM" }]}
+                        onValueChange={(value) => setScheduleDraft((current) => withCustomOpenTime(current, index, {
+                          period: value as "AM" | "PM",
+                        }))}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
+              <button
+                type="button"
+                onClick={() => setScheduleDraft(addCustomOpenTime)}
+                disabled={scheduleDraft.custom_open_times.length >= 24}
+                className="text-sm font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                + Add another custom time
+              </button>
             </div>
           </div>
           <DialogFooter>
@@ -882,7 +973,7 @@ export function Slots() {
                 id="open-slot-minute"
                 label="Minute"
                 value={String(openSlotMinute)}
-                options={Array.from({ length: 60 }, (_, minute) => ({ value: String(minute), label: String(minute).padStart(2, "0") }))}
+                options={MINUTE_OPTIONS}
                 onValueChange={(value) => setOpenSlotMinute(Number(value))}
               />
               <SelectWithLabel
@@ -965,7 +1056,7 @@ function toScheduleDraft(schedule: BookingSchedule): UpdateBookingScheduleData {
     closed_weekday: schedule.closed_weekday,
     opening_time: schedule.opening_time,
     closing_time: schedule.closing_time,
-    custom_open_time: schedule.custom_open_time,
+    custom_open_times: schedule.custom_open_times,
     booking_days_ahead: schedule.booking_days_ahead,
   };
 }

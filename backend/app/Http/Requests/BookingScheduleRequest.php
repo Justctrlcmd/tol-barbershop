@@ -19,7 +19,15 @@ class BookingScheduleRequest extends FormRequest
             'closed_weekday' => ['nullable', 'integer', 'between:1,7'],
             'opening_time' => ['required', 'date_format:H:i', 'regex:/^(?:[01]\d|2[0-3]):00$/'],
             'closing_time' => ['required', 'date_format:H:i', 'regex:/^(?:[01]\d|2[0-3]):00$/', 'gte:opening_time'],
-            'custom_open_time' => ['required', 'date_format:H:i', 'gte:opening_time', 'lte:closing_time'],
+            'custom_open_times' => ['required', 'array', 'min:1', 'max:24'],
+            'custom_open_times.*' => [
+                'required',
+                'distinct',
+                'date_format:H:i',
+                'regex:/^(?:[01]\d|2[0-3]):(?:00|05|10|15|20|25|30|35|40|45|50|55)$/',
+                'gte:opening_time',
+                'lte:closing_time',
+            ],
             'booking_days_ahead' => ['required', 'integer', 'between:1,30'],
         ];
     }
@@ -46,8 +54,9 @@ class BookingScheduleRequest extends FormRequest
         return [
             'open_day_to.gte' => 'The last open day cannot come before the first open day.',
             'closing_time.gte' => 'The closing time cannot be earlier than the opening time.',
-            'custom_open_time.gte' => 'The custom time must be within the working hours.',
-            'custom_open_time.lte' => 'The custom time must be within the working hours.',
+            'custom_open_times.*.gte' => 'Each custom time must be within the working hours.',
+            'custom_open_times.*.lte' => 'Each custom time must be within the working hours.',
+            'custom_open_times.*.distinct' => 'Each custom time must be unique.',
             'booking_days_ahead.between' => 'Booking days in advance must be between 1 and 30.',
         ];
     }

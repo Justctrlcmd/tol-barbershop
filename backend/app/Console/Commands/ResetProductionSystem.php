@@ -72,6 +72,7 @@ class ResetProductionSystem extends Command
                         'opening_time' => '09:00',
                         'closing_time' => '19:00',
                         'custom_open_time' => '12:30',
+                        'custom_open_times' => ['12:30'],
                         'booking_days_ahead' => 7,
                         'created_by_user_id' => $user->id,
                     ],
