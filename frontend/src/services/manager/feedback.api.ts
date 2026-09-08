@@ -2,12 +2,12 @@ import { authFetch } from "@/lib/api";
 
 export interface FeedbackItem {
   id: number;
-  appointment_id: number;
+  appointment_id: number | null;
   rating: number;
   comment: string | null;
   customer_name: string;
   customer_initials: string;
-  service_name: string;
+  service_name: string | null;
   submitted_at: string;
   barber_name: string | null;
   is_featured: boolean;

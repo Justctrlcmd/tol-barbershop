@@ -8,6 +8,7 @@ import { ServiceSchemaFormValues } from "@/validations/service.validation";
 import { type AddOnSchemaFormValues } from "@/validations/add-on.validation";
 import { ServicesCard } from "@/components/common/ServicesCard";
 import { ServiceAddOnCard } from "@/components/common/ServiceAddOnCard";
+import { useManagementModuleHeaderActions } from "@/layout/manager/ManagementModulePage";
 import {
   getServices,
   createService,
@@ -44,6 +45,7 @@ const isActiveValue = (value: unknown): boolean => {
 };
 
 export function Service() {
+  const { setHeaderActions } = useManagementModuleHeaderActions();
   const [services, setServices] = useState<Service[]>([]);
   const [addOns, setAddOns] = useState<ServiceAddOn[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,6 +109,21 @@ export function Service() {
     setEditingService(null);
     setShowModal(true);
   };
+
+  useEffect(() => {
+    setHeaderActions(
+      <button
+        type="button"
+        onClick={openAddModal}
+        className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-red-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-600 md:hidden"
+      >
+        <Plus className="size-4" />
+        Add Service
+      </button>,
+    );
+
+    return () => setHeaderActions(null);
+  }, [setHeaderActions]);
 
   const openEditModal = (service: Service) => {
     setEditingService(service);
@@ -175,12 +192,12 @@ export function Service() {
       await loadServices();
       setDeleteAddOnConfirmOpen(false);
       setAddOnToDelete(null);
-      toast.success("Add-on archived");
+      toast.success("Add-on deleted");
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not archive add-on. Please try again.",
+          : "Could not delete add-on. Please try again.",
       );
     } finally {
       setIsDeletingAddOn(false);
@@ -219,12 +236,12 @@ export function Service() {
                 <p className="text-sm text-gray-500">Main services customers can book.</p>
               </div>
               <button
+                type="button"
                 onClick={openAddModal}
-                className="flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+                className="hidden items-center gap-1.5 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-600 md:flex"
               >
                 <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-                <span className="hidden xs:inline">Add Service</span>
-                <span className="xs:hidden">Add</span>
+                Add Service
               </button>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -366,10 +383,11 @@ export function Service() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-red-500" />
-              Archive Add-on
+              Delete Add-on
             </DialogTitle>
             <DialogDescription>
-              Archive this add-on? Existing booking totals and history will be retained.
+              Delete this add-on? It will be removed from add-on lists, while
+              existing booking and reporting history will be retained.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -387,7 +405,7 @@ export function Service() {
               disabled={isDeletingAddOn}
               className="bg-red-500 text-white hover:bg-red-600"
             >
-              {isDeletingAddOn ? "Archiving..." : "Archive"}
+              {isDeletingAddOn ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

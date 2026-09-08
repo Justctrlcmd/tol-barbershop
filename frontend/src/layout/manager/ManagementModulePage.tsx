@@ -34,14 +34,14 @@ export function ManagementModulePage({
   return (
     <ManagementModuleHeaderActionsContext.Provider value={{ setHeaderActions }}>
       <div className="min-h-full w-full bg-slate-100 font-sans">
-        <header className="flex flex-col gap-4 px-4 pt-4 sm:flex-row sm:items-start sm:justify-between sm:px-6 sm:pt-6">
-          <div>
+        <header className="relative flex flex-col gap-4 px-4 pt-4 sm:flex-row sm:items-start sm:justify-between sm:px-6 sm:pt-6">
+          <div className="pr-24 sm:pr-0">
             <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
               {title}
             </h1>
             <p className="mt-1 text-sm text-gray-500">{description}</p>
           </div>
-          {headerActions ? <div className="flex shrink-0 gap-2">{headerActions}</div> : null}
+          {headerActions ? <div className="absolute right-4 top-4 flex shrink-0 gap-2 sm:static">{headerActions}</div> : null}
         </header>
         {children}
       </div>

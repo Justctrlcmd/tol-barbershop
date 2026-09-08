@@ -4,6 +4,7 @@ export type BookingSchedule = {
   open_day_from: number;
   open_day_to: number;
   closed_weekday: number | null;
+  closed_weekdays: number[];
   opening_time: string;
   closing_time: string;
   custom_open_time: string;
@@ -18,7 +19,7 @@ export type UpdateBookingScheduleData = Pick<
   BookingSchedule,
   | "open_day_from"
   | "open_day_to"
-  | "closed_weekday"
+  | "closed_weekdays"
   | "opening_time"
   | "closing_time"
   | "custom_open_times"

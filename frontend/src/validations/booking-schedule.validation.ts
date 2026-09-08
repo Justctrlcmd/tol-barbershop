@@ -4,7 +4,7 @@ export const bookingScheduleSchema = z
   .object({
     open_day_from: z.number().int().min(1).max(7),
     open_day_to: z.number().int().min(1).max(7),
-    closed_weekday: z.number().int().min(1).max(7).nullable(),
+    closed_weekdays: z.array(z.number().int().min(1).max(7)).max(7),
     opening_time: z.string().regex(/^(?:[01]\d|2[0-3]):00$/),
     closing_time: z.string().regex(/^(?:[01]\d|2[0-3]):00$/),
     custom_open_times: z
@@ -44,19 +44,22 @@ export const bookingScheduleSchema = z
         message: "Each custom time must be unique.",
       });
     }
-    if (
-      schedule.closed_weekday !== null
-      && (
-        schedule.closed_weekday < schedule.open_day_from
-        || schedule.closed_weekday > schedule.open_day_to
-      )
-    ) {
+    if (new Set(schedule.closed_weekdays).size !== schedule.closed_weekdays.length) {
       context.addIssue({
         code: "custom",
-        path: ["closed_weekday"],
-        message: "The closed day must be within the open-day range.",
+        path: ["closed_weekdays"],
+        message: "Each closed day must be unique.",
       });
     }
+    schedule.closed_weekdays.forEach((weekday, index) => {
+      if (weekday < schedule.open_day_from || weekday > schedule.open_day_to) {
+        context.addIssue({
+          code: "custom",
+          path: ["closed_weekdays", index],
+          message: "Each closed day must be within the open-day range.",
+        });
+      }
+    });
   });
 
 export const scheduleOpenSlotSchema = z.object({

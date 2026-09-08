@@ -262,7 +262,7 @@ export function RescheduleForm({
     return !hasCustomSlot && (
       isoWeekday < settings.open_day_from
       || isoWeekday > settings.open_day_to
-      || isoWeekday === settings.closed_weekday
+      || settings.closed_weekdays.includes(isoWeekday)
     );
   };
 

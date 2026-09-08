@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { ActivityLog } from "@/components/common/ActivityLog";
 import { DatePickerWithLabel } from "@/components/common/DatePickerWithLabel";
+import { useManagementModuleHeaderActions } from "@/layout/manager/ManagementModulePage";
 import { ClosedDateForm } from "@/forms/ClosedDateForm";
 import { ClosedDateSchemaFormValues } from "@/validations/closed.date.validation";
 import { SelectWithLabel } from "@/components/common/SelectWithLabel";
@@ -96,7 +97,7 @@ const BOOKING_WINDOW_OPTIONS = Array.from({ length: 30 }, (_, index) => {
 const defaultSchedule: UpdateBookingScheduleData = {
   open_day_from: 1,
   open_day_to: 7,
-  closed_weekday: 7,
+  closed_weekdays: [7],
   opening_time: "09:00",
   closing_time: "19:00",
   custom_open_times: ["12:30"],
@@ -185,7 +186,24 @@ function addCustomOpenTime(schedule: UpdateBookingScheduleData): UpdateBookingSc
   return schedule;
 }
 
+function addClosedWeekday(schedule: UpdateBookingScheduleData): UpdateBookingScheduleData {
+  const nextWeekday = DAYS.find((day) => (
+    day.value >= schedule.open_day_from
+    && day.value <= schedule.open_day_to
+    && !schedule.closed_weekdays.includes(day.value)
+  ));
+
+  if (!nextWeekday) return schedule;
+
+  return {
+    ...schedule,
+    closed_weekdays: [...schedule.closed_weekdays, nextWeekday.value]
+      .sort((left, right) => left - right),
+  };
+}
+
 export function Slots() {
+  const { setHeaderActions } = useManagementModuleHeaderActions();
   const { user } = useAuth();
   const canConfigureOperation = user?.role === "manager";
   const [showClosedDateModal, setShowClosedDateModal] = useState(false);
@@ -221,6 +239,28 @@ export function Slots() {
   const [openSlotPeriod, setOpenSlotPeriod] = useState<"AM" | "PM">("PM");
   const [isSavingOpenSlot, setIsSavingOpenSlot] = useState(false);
   const customTimes = scheduleDraft.custom_open_times.map(toTimeSelection);
+  const recurringClosedDays: Array<number | null> = scheduleDraft.closed_weekdays.length
+    ? scheduleDraft.closed_weekdays
+    : [null];
+
+  useEffect(() => {
+    setHeaderActions(
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setShowScheduleModal(true)}
+        disabled={!canConfigureOperation}
+        title={canConfigureOperation ? undefined : "Only managers can configure the operation schedule."}
+        className="shrink-0 whitespace-nowrap bg-white md:hidden"
+      >
+        <Settings className="size-4" />
+        {canConfigureOperation ? "Configure" : "Manager only"}
+      </Button>,
+    );
+
+    return () => setHeaderActions(null);
+  }, [canConfigureOperation, setHeaderActions]);
 
   const scheduleInfo = [
     {
@@ -250,9 +290,12 @@ export function Slots() {
     },
     {
       icon: Ban,
-      label: "Recurring Closed Day",
-      value: schedule?.closed_weekday
-        ? DAYS[schedule.closed_weekday - 1]?.label
+      label: "Recurring Closed Days",
+      value: schedule?.closed_weekdays.length
+        ? schedule.closed_weekdays
+          .map((weekday) => DAYS[weekday - 1]?.label)
+          .filter(Boolean)
+          .join(", ")
         : "None",
       accent: "bg-red-50 text-red-500",
       iconBg: "bg-red-100",
@@ -628,11 +671,11 @@ export function Slots() {
 
         </div>
 
-        <div className="order-1 bg-white rounded-xl p-5 shadow-sm border border-gray-100 flex flex-col lg:order-2">
-          <div className="mb-5 flex items-start justify-between gap-3">
+        <div className="order-1 flex flex-col rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5 lg:order-2">
+          <div className="mb-3 flex items-start justify-between gap-3 sm:mb-5">
             <div>
-              <p className="font-semibold text-gray-900">Operation Configuration</p>
-              <p className="text-gray-500 text-sm mt-0.5">
+              <p className="text-sm font-semibold text-gray-900 sm:text-base">Operation Configuration</p>
+              <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
                 Current operating schedule for bookings
               </p>
             </div>
@@ -643,30 +686,31 @@ export function Slots() {
               onClick={() => setShowScheduleModal(true)}
               disabled={!canConfigureOperation}
               title={canConfigureOperation ? undefined : "Only managers can configure the operation schedule."}
+              className="hidden md:inline-flex"
             >
               <Settings className="size-4" />
               {canConfigureOperation ? "Configure" : "Manager only"}
             </Button>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 flex-1">
+          <div className="grid flex-1 grid-cols-2 gap-2 sm:gap-3">
             {scheduleInfo.map(
               ({ icon: Icon, label, value, accent, iconBg }) => (
                 <div
                   key={`${label}-${value}`}
-                  className="flex items-center gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3.5 hover:bg-slate-100 transition-colors"
+                  className="flex items-center gap-2 rounded-lg border border-gray-100 bg-slate-50 px-2.5 py-2.5 transition-colors hover:bg-slate-100 sm:gap-3 sm:rounded-xl sm:px-4 sm:py-3.5"
                 >
-                  <div className={cn(iconBg, "rounded-lg p-2 shrink-0")}>
+                  <div className={cn(iconBg, "shrink-0 rounded-md p-1.5 sm:rounded-lg sm:p-2")}>
                     <Icon
-                      className={cn("w-4 h-4", accent.split(" ")[1])}
+                      className={cn("size-3.5 sm:size-4", accent.split(" ")[1])}
                       strokeWidth={2}
                     />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide leading-none mb-1">
+                    <p className="mb-0.5 text-[9px] font-medium uppercase leading-tight tracking-wide text-gray-400 sm:mb-1 sm:text-xs sm:leading-none">
                       {label}
                     </p>
-                    <p className="text-sm font-semibold text-gray-800 whitespace-normal break-words">
+                    <p className="break-words text-xs font-semibold text-gray-800 sm:text-sm">
                       {value}
                     </p>
                   </div>
@@ -675,9 +719,9 @@ export function Slots() {
             )}
           </div>
 
-          <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-xs text-gray-400">Last updated today</p>
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+          <div className="mt-3 flex items-center justify-end border-t border-gray-100 pt-3 sm:mt-4 sm:justify-between sm:pt-4">
+            <p className="hidden text-xs text-gray-400 sm:block">Last updated today</p>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 sm:px-2.5 sm:py-1 sm:text-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Active Schedule
             </span>
@@ -751,7 +795,7 @@ export function Slots() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <SelectWithLabel
               id="open-day-from"
-              label="Open Days From"
+              label="First Open Day"
               value={String(scheduleDraft.open_day_from)}
               options={DAYS.map((day) => ({ value: String(day.value), label: day.label }))}
               onValueChange={(value) => {
@@ -760,15 +804,13 @@ export function Slots() {
                   ...current,
                   open_day_from: from,
                   open_day_to: Math.max(current.open_day_to, from),
-                  closed_weekday: current.closed_weekday !== null && current.closed_weekday >= from
-                    ? current.closed_weekday
-                    : null,
+                  closed_weekdays: current.closed_weekdays.filter((weekday) => weekday >= from),
                 }));
               }}
             />
             <SelectWithLabel
               id="open-day-to"
-              label="To"
+              label="Last Open Day"
               value={String(scheduleDraft.open_day_to)}
               options={DAYS.map((day) => ({
                 value: String(day.value),
@@ -780,42 +822,13 @@ export function Slots() {
                 setScheduleDraft((current) => ({
                   ...current,
                   open_day_to: to,
-                  closed_weekday: current.closed_weekday !== null && current.closed_weekday <= to
-                    ? current.closed_weekday
-                    : null,
+                  closed_weekdays: current.closed_weekdays.filter((weekday) => weekday <= to),
                 }));
               }}
             />
             <SelectWithLabel
-              id="closed-weekday"
-              label="Recurring Closed Day"
-              value={scheduleDraft.closed_weekday === null ? "none" : String(scheduleDraft.closed_weekday)}
-              options={[
-                { value: "none", label: "None" },
-                ...DAYS.map((day) => ({
-                  value: String(day.value),
-                  label: day.label,
-                  disabled: day.value < scheduleDraft.open_day_from || day.value > scheduleDraft.open_day_to,
-                })),
-              ]}
-              onValueChange={(value) => setScheduleDraft((current) => ({
-                ...current,
-                closed_weekday: value === "none" ? null : Number(value),
-              }))}
-            />
-            <SelectWithLabel
-              id="booking-days-ahead"
-              label="Customer Booking Window"
-              value={String(scheduleDraft.booking_days_ahead)}
-              options={BOOKING_WINDOW_OPTIONS}
-              onValueChange={(value) => setScheduleDraft((current) => ({
-                ...current,
-                booking_days_ahead: Number(value),
-              }))}
-            />
-            <SelectWithLabel
               id="opening-time"
-              label="Working Hours From"
+              label="Opening Time"
               value={scheduleDraft.opening_time}
               options={HOURS}
               onValueChange={(value) => setScheduleDraft((current) => ({
@@ -831,7 +844,7 @@ export function Slots() {
             />
             <SelectWithLabel
               id="closing-time"
-              label="To"
+              label="Closing Time"
               value={scheduleDraft.closing_time}
               options={HOURS.map((hour) => ({
                 ...hour,
@@ -847,21 +860,94 @@ export function Slots() {
                 )),
               }))}
             />
+            <div className="sm:col-span-2">
+              <SelectWithLabel
+                id="booking-days-ahead"
+                label="Customer Booking Window"
+                value={String(scheduleDraft.booking_days_ahead)}
+                options={BOOKING_WINDOW_OPTIONS}
+                onValueChange={(value) => setScheduleDraft((current) => ({
+                  ...current,
+                  booking_days_ahead: Number(value),
+                }))}
+              />
+            </div>
+            <fieldset className="space-y-3 sm:col-span-2">
+              <div>
+                <Label>Recurring Closed Days</Label>
+                <p className="mt-1 text-xs text-gray-500">
+                  Select one or more days to close every week.
+                </p>
+              </div>
+              <div className="space-y-3">
+                {recurringClosedDays.map((closedWeekday, index) => (
+                  <div key={`${closedWeekday ?? "none"}-${index}`} className="space-y-2">
+                    {index > 0 && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setScheduleDraft((current) => ({
+                            ...current,
+                            closed_weekdays: current.closed_weekdays.filter((_, weekdayIndex) => weekdayIndex !== index),
+                          }))}
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                    <SelectWithLabel
+                      id={`closed-weekday-${index}`}
+                      label={recurringClosedDays.length > 1 ? `Day ${index + 1}` : "Day"}
+                      value={closedWeekday === null ? "none" : String(closedWeekday)}
+                      options={[
+                        ...(index === 0 ? [{ value: "none", label: "None" }] : []),
+                        ...DAYS.map((day) => ({
+                          value: String(day.value),
+                          label: day.label,
+                          disabled: day.value < scheduleDraft.open_day_from
+                            || day.value > scheduleDraft.open_day_to
+                            || (day.value !== closedWeekday && scheduleDraft.closed_weekdays.includes(day.value)),
+                        })),
+                      ]}
+                      onValueChange={(value) => setScheduleDraft((current) => ({
+                        ...current,
+                        closed_weekdays: value === "none"
+                          ? []
+                          : (current.closed_weekdays.length === 0
+                              ? [Number(value)]
+                              : current.closed_weekdays.map((weekday, weekdayIndex) => (
+                                weekdayIndex === index ? Number(value) : weekday
+                              )))
+                            .sort((left, right) => left - right),
+                      }))}
+                    />
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setScheduleDraft(addClosedWeekday)}
+                disabled={scheduleDraft.closed_weekdays.length >= (
+                  scheduleDraft.open_day_to - scheduleDraft.open_day_from + 1
+                )}
+                className="text-sm font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                + Add another closed day
+              </button>
+            </fieldset>
             <div className="space-y-3 sm:col-span-2">
               <div>
-                <Label>Recurring Custom Time</Label>
+                <Label>Recurring Custom Times</Label>
                 <p className="mt-1 text-xs text-gray-500">
-                  Available for every barber on each open date from today forward.
+                  Added to every open day for all barbers.
                 </p>
               </div>
               <div className="space-y-3">
                 {customTimes.map((customTime, index) => (
                   <div key={`${scheduleDraft.custom_open_times[index]}-${index}`} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium text-gray-600">
-                        {index === 0 ? "Custom time" : `Custom time ${index + 1}`}
-                      </p>
-                      {index > 0 && (
+                    {index > 0 && (
+                      <div className="flex justify-end">
                         <button
                           type="button"
                           onClick={() => setScheduleDraft((current) => ({
@@ -872,8 +958,8 @@ export function Slots() {
                         >
                           Remove
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     <div className="grid grid-cols-3 gap-3">
                       <SelectWithLabel
                         id={`custom-open-hour-${index}`}
@@ -1053,7 +1139,7 @@ function toScheduleDraft(schedule: BookingSchedule): UpdateBookingScheduleData {
   return {
     open_day_from: schedule.open_day_from,
     open_day_to: schedule.open_day_to,
-    closed_weekday: schedule.closed_weekday,
+    closed_weekdays: schedule.closed_weekdays,
     opening_time: schedule.opening_time,
     closing_time: schedule.closing_time,
     custom_open_times: schedule.custom_open_times,

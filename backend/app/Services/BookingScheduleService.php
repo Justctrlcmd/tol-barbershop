@@ -43,7 +43,8 @@ class BookingScheduleService
         return [
             'open_day_from' => $schedule->open_day_from,
             'open_day_to' => $schedule->open_day_to,
-            'closed_weekday' => $schedule->closed_weekday,
+            'closed_weekday' => $this->closedWeekdays($schedule)[0] ?? null,
+            'closed_weekdays' => $this->closedWeekdays($schedule),
             'opening_time' => substr((string) $schedule->opening_time, 0, 5),
             'closing_time' => substr((string) $schedule->closing_time, 0, 5),
             'custom_open_time' => $customOpenTimes[0],
@@ -79,11 +80,11 @@ class BookingScheduleService
         $weekday = $date->dayOfWeekIso;
         $from = (int) $this->value($schedule, 'open_day_from');
         $to = (int) $this->value($schedule, 'open_day_to');
-        $closedWeekday = $this->value($schedule, 'closed_weekday');
+        $closedWeekdays = $this->closedWeekdays($schedule);
 
         return $weekday >= $from
             && $weekday <= $to
-            && ($closedWeekday === null || $weekday !== (int) $closedWeekday);
+            && ! in_array($weekday, $closedWeekdays, true);
     }
 
     public function standardStartTimes(BookingSchedule|array $schedule): array
@@ -219,6 +220,25 @@ class BookingScheduleService
             ->map(fn (string $time): string => $this->normalizeTime($time))
             ->unique()
             ->sortBy(fn (string $time): int => $this->timeToMinutes($time))
+            ->values()
+            ->all();
+    }
+
+    private function closedWeekdays(BookingSchedule|array $schedule): array
+    {
+        $weekdays = $this->value($schedule, 'closed_weekdays');
+
+        if (! is_array($weekdays)) {
+            $legacyWeekday = $this->value($schedule, 'closed_weekday');
+            $weekdays = $legacyWeekday === null ? [] : [$legacyWeekday];
+        }
+
+        return collect($weekdays)
+            ->filter(fn (mixed $weekday): bool => is_int($weekday) || ctype_digit((string) $weekday))
+            ->map(fn (mixed $weekday): int => (int) $weekday)
+            ->filter(fn (int $weekday): bool => $weekday >= 1 && $weekday <= 7)
+            ->unique()
+            ->sort()
             ->values()
             ->all();
     }

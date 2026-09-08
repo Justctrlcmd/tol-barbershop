@@ -196,18 +196,24 @@ export function Admin() {
     setHeaderActions(
       <>
         <button
+          type="button"
           onClick={openAddRole}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+          aria-label="Create Role"
+          title="Create Role"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 sm:px-3"
         >
           <Plus className="size-4" />
-          Create Role
+          <span className="hidden sm:inline">Create Role</span>
         </button>
         <button
+          type="button"
           onClick={openAddAdmin}
-          className="flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+          aria-label="Add Admin"
+          title="Add Admin"
+          className="flex items-center gap-1.5 rounded-lg bg-red-500 px-2 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-600 sm:px-3"
         >
           <Plus className="size-4" />
-          Add Admin
+          <span className="hidden sm:inline">Add Admin</span>
         </button>
       </>,
     );

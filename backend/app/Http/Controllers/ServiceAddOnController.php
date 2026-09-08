@@ -90,14 +90,14 @@ class ServiceAddOnController extends Controller
                 return $this->error('Service add-on not found', [], 404);
             }
 
-            $addOn->update(['is_active' => false]);
+            $addOn->delete();
             EntityChange::dispatch('services');
 
-            return $this->success('Service add-on archived successfully');
+            return $this->success('Service add-on deleted successfully');
         } catch (Throwable $exception) {
             report($exception);
 
-            return $this->error('Could not archive service add-on', [], 500);
+            return $this->error('Could not delete service add-on', [], 500);
         }
     }
 }

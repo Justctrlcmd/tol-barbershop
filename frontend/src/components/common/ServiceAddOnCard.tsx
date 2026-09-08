@@ -1,4 +1,4 @@
-import { Archive, Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ServiceAddOnCardProps = {
@@ -55,10 +55,10 @@ export function ServiceAddOnCard({
         <button
           type="button"
           onClick={() => onDelete(id)}
-          aria-label={"Archive " + name}
+          aria-label={"Delete " + name}
           className="rounded-lg bg-red-500 p-2 text-white transition-colors hover:bg-red-600"
         >
-          <Archive className="h-5 w-5" strokeWidth={2} />
+          <Trash2 className="h-5 w-5" strokeWidth={2} />
         </button>
       </div>
     </div>

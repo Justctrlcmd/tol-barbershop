@@ -184,6 +184,7 @@ class AppointmentFeedbackController extends Controller
             $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
             $query->where(function ($q) use ($like) {
                 $q->whereHas('bookingCustomer', fn ($uq) => $uq->whereRaw("fullname LIKE ? ESCAPE '!'", [$like]))
+                    ->orWhereRaw("customer_name_snapshot LIKE ? ESCAPE '!'", [$like])
                     ->orWhereHas('appointment.barber', fn ($bq) => $bq->whereRaw("fullname LIKE ? ESCAPE '!'", [$like]))
                     ->orWhereHas('appointment.service', fn ($sq) => $sq->whereRaw("name LIKE ? ESCAPE '!'", [$like]))
                     ->orWhereRaw("comment LIKE ? ESCAPE '!'", [$like]);

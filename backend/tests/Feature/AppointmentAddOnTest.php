@@ -109,3 +109,66 @@ test('staff can manage add-ons and apply them to confirmed appointments', functi
         ->assertUnprocessable()
         ->assertJsonValidationErrors('appointment');
 });
+
+test('deleting an add-on preserves existing booking add-on records', function () {
+    $manager = User::factory()->create([
+        'role' => 'manager',
+        'is_active' => true,
+    ]);
+    $barber = User::factory()->create([
+        'role' => 'barber',
+        'is_active' => true,
+    ]);
+    $customer = BookingCustomer::create([
+        'fullname' => 'Archived Add-on Customer',
+        'email' => 'archived-addon@example.test',
+        'contact_number' => '09123456789',
+    ]);
+    $service = Service::create([
+        'name' => 'Haircut with Add-on',
+        'description' => 'A haircut with an add-on',
+        'duration' => 60,
+        'price' => 300,
+        'is_active' => true,
+    ]);
+    $appointment = Appointment::create([
+        'booking_customer_id' => $customer->id,
+        'service_id' => $service->id,
+        'barber_user_id' => $barber->id,
+        'appointment_date' => '2026-07-18',
+        'appointment_time' => '09:00',
+        'duration_minutes' => 60,
+        'price' => 350,
+        'status' => 'confirmed',
+        'active_slot_key' => 'archived-addon-slot',
+        'confirmed_at' => now(),
+        'customer_name_snapshot' => $customer->fullname,
+        'customer_email_snapshot' => $customer->email,
+        'customer_contact_number_snapshot' => $customer->contact_number,
+        'service_name_snapshot' => $service->name,
+        'barber_name_snapshot' => $barber->fullname,
+    ]);
+    $addOn = ServiceAddOn::create([
+        'name' => 'Hot Towel',
+        'price' => 50,
+        'is_active' => true,
+    ]);
+    $appointmentAddOn = AppointmentAddOn::create([
+        'appointment_id' => $appointment->id,
+        'service_add_on_id' => $addOn->id,
+        'name_snapshot' => $addOn->name,
+        'price' => $addOn->price,
+    ]);
+
+    Sanctum::actingAs($manager);
+
+    $this->deleteJson("/api/v1/service-add-ons/{$addOn->id}")
+        ->assertOk();
+
+    $this->assertSoftDeleted('service_add_ons', ['id' => $addOn->id]);
+    expect(AppointmentAddOn::query()->find($appointmentAddOn->id))->not->toBeNull();
+
+    $this->getJson('/api/v1/service-add-ons')
+        ->assertOk()
+        ->assertJsonCount(0, 'data.add_ons');
+});

@@ -35,7 +35,9 @@ class ServiceAddOnRequest extends FormRequest
                 'min:1',
                 'max:255',
                 "regex:/^[A-Za-z0-9\\s&'().+\\-]+$/",
-                Rule::unique('service_add_ons', 'name')->ignore($addOnId),
+                Rule::unique('service_add_ons', 'name')
+                    ->ignore($addOnId)
+                    ->whereNull('deleted_at'),
             ],
             'price' => [
                 'required',
