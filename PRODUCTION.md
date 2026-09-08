@@ -1,63 +1,66 @@
 # Production Deployment Notes
 
-This deployment uses Netlify Free for `frontend/` and Hostinger Premium Shared Hosting for `backend/`. The normal production architecture is direct browser-to-backend: the frontend at `https://www.saysontest.online` and the Laravel API at `https://api.saysontest.online`, which the browser calls directly using CORS and credentials. The Netlify `/api/*` and `/sanctum/*` rewrites are retained temporarily only as a migration fallback while direct mode is validated; they are not the intended permanent browser request path.
+Production uses one public origin, `https://tolbarbershop.com`, with Nginx routing requests to Next.js or Laravel:
 
-Netlify Free allows commercial use with custom domains. Use branch-based Deploy Previews only for development or non-production validation; do not point authenticated production traffic at a Deploy Preview URL.
+```text
+https://tolbarbershop.com/
+├── /             → Next.js
+├── /api/v1/*     → Laravel
+├── /sanctum/*    → Laravel
+└── /storage/*    → Laravel public storage
+```
+
+The browser never needs a separate backend origin. Nginx, not Next.js, owns the API, Sanctum, and storage routes.
 
 ## Required Runtime
 
 | Component | Requirement |
 |---|---|
-| Frontend | Node.js 22.x, npm, Netlify OpenNext adapter (no Node.js runtime required) |
+| Frontend | Node.js 24.x and npm 11+ |
 | Backend | PHP 8.4 or newer within the PHP 8.4 line |
 | Database | MySQL 8+ |
+| Web server | Nginx with PHP-FPM and reverse proxy support |
 | PHP extensions | ctype, curl, dom, fileinfo, filter, hash, iconv, json, libxml, openssl, pcre, PDO MySQL, session, SimpleXML, tokenizer, XML, XMLWriter |
-| TLS | HTTPS on both frontend and backend origins |
+| TLS | HTTPS on `tolbarbershop.com` |
 
 The backend dependency lock is generated for PHP 8.4. Do not deploy it under PHP 8.3.
 
-## Netlify Configuration
+## Frontend Configuration
 
-Connect the repository to Netlify and configure the project with these settings:
+Install and build from `frontend/`:
 
-```text
-Base directory:        (leave unset — repository root)
-Package directory:     frontend
-Build command:         npm run build
-Publish directory:     .next
+```bash
+npm ci
+npm run build
+npm run start
 ```
 
-The OpenNext adapter is detected automatically and provisions Edge Functions for `proxy.ts` middleware and serverless functions for SSR/ISR where needed. Do not pin the adapter version — Netlify keeps it current with each build.
-
-Set these Netlify environment variables in the dashboard:
+Use these public frontend values in production:
 
 ```dotenv
-NODE_VERSION=22
-BACKEND_URL=https://api.saysontest.online
-NEXT_PUBLIC_API_ORIGIN=https://api.saysontest.online
+NEXT_PUBLIC_API_URL=/api/v1
+NEXT_PUBLIC_API_ORIGIN=
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=<same public VAPID key used by Laravel>
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=<your Cloudinary cloud name>
 ```
 
-`BACKEND_URL` must be a clean HTTPS origin without credentials, a path, query string, or fragment. The production build intentionally fails when it is missing or unsafe. It remains present while the `/api/*` and `/sanctum/*` rewrites exist as fallback.
+`NEXT_PUBLIC_API_URL` resolves to `/api/v1`. Leave `NEXT_PUBLIC_API_ORIGIN` unset or empty so API calls and CSRF initialization use `/api/v1/*` and `/sanctum/csrf-cookie` on the current origin. Requests continue to use `credentials: include`; state-changing requests echo the `XSRF-TOKEN` cookie in the `X-XSRF-TOKEN` header.
 
-`NEXT_PUBLIC_API_ORIGIN` enables direct browser-to-backend mode. `NEXT_PUBLIC_API_URL` is derived by `frontend/next.config.ts` from `NEXT_PUBLIC_API_ORIGIN` and must not be manually configured. With it set, browser API requests go to `https://api.saysontest.online/api/v1/*`, CSRF initialization goes to `https://api.saysontest.online/sanctum/csrf-cookie`, and requests use `credentials: include`. GET/HEAD/OPTIONS requests do not send `X-XSRF-TOKEN`; state-changing requests send it when available. The frontend CSP `connect-src` must permit `https://api.saysontest.online`.
+For local development only, set `NEXT_PUBLIC_API_ORIGIN=http://localhost:8000` when Laravel runs separately from Next.js. This direct-origin development mode does not affect production.
 
-Use one stable production frontend hostname (the Netlify custom domain). Deploy Preview URLs are development-only and must not be added to backend CORS, Sanctum stateful domains, or any production allowlist.
+## Nginx Routing
 
-## Temporary Fallback Rewrites
-
-The Next.js rewrites at `/api/*` and `/sanctum/*` remain available during the migration and act as a fallback while direct mode is validated (via `BACKEND_URL`). They are not the intended normal browser request path once `NEXT_PUBLIC_API_ORIGIN` is enabled, and they should not be treated as permanent architecture. Production cutover is not yet assumed complete.
+Configure Nginx so `/api/v1/*` and `/sanctum/*` execute Laravel's `backend/public/index.php`, `/storage/*` maps to Laravel public storage, and every other route proxies to the Next.js process. Do not proxy API or Sanctum requests through Next.js and do not configure a separate public API hostname.
 
 ## Laravel Environment
 
-Create `backend/.env` on Hostinger via the File Manager or SSH. Set owner-only permissions immediately after creation. Start from `.env.example`, then apply at least these production values:
+Create `backend/.env` on the production server and set owner-only permissions immediately. Start from `.env.example`, then apply at least these production values:
 
 ```dotenv
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://api.saysontest.online
-FRONTEND_URL=https://www.saysontest.online
+APP_URL=https://tolbarbershop.com
+FRONTEND_URL=https://tolbarbershop.com
 SHOP_TIMEZONE=Asia/Manila
 APP_KEY=<php artisan key:generate --show>
 
@@ -75,12 +78,12 @@ DB_PASSWORD=<strong database password>
 SESSION_DRIVER=database
 SESSION_LIFETIME=120
 SESSION_ENCRYPT=true
-SESSION_DOMAIN=.saysontest.online
+SESSION_DOMAIN=null
 SESSION_SECURE_COOKIE=true
 SESSION_HTTP_ONLY=true
 SESSION_SAME_SITE=lax
 
-SANCTUM_STATEFUL_DOMAINS=www.saysontest.online,saysontest.online
+SANCTUM_STATEFUL_DOMAINS=tolbarbershop.com
 
 CACHE_STORE=database
 QUEUE_CONNECTION=sync
@@ -109,43 +112,31 @@ DEFAULT_MANAGER_NAME=<manager fullname>
 DEFAULT_MANAGER_CONTACT=<manager phone>
 ```
 
-`SESSION_DOMAIN=.saysontest.online` is required for the sibling-subdomain Sanctum SPA architecture. `www.saysontest.online` and `api.saysontest.online` are different origins but the same registrable site, so a shared cookie domain lets the browser return the session and `XSRF-TOKEN` cookies to the API origin automatically. Cookies are sent with `Secure`, `SameSite=Lax`, and `HttpOnly` (session cookie), which keeps CSRF-token reads protected in this cross-origin but same-site setup. This configuration has been manually verified.
+`SESSION_DOMAIN=null` keeps the session and CSRF cookies host-only on `tolbarbershop.com`. Because the SPA, API, and Sanctum endpoint share one origin, the browser returns those cookies without cross-origin cookie configuration. Keep `Secure`, `SameSite=Lax`, and `HttpOnly` enabled for the session cookie.
 
-Do not add Deploy Preview domains, wildcard domains, or unused ngrok domains to `SANCTUM_STATEFUL_DOMAINS` or CORS in production.
+Do not add preview domains, wildcard domains, old API subdomains, or unused ngrok domains to `SANCTUM_STATEFUL_DOMAINS` or production CORS configuration.
 
-Use `QUEUE_CONNECTION=sync` unless Hostinger's plan has a continuously supervised queue worker. The application does not require Redis.
+Use `QUEUE_CONNECTION=sync` unless the production server has a continuously supervised queue worker. The application does not require Redis.
 
-Configure the Hostinger hPanel cron scheduler to run Laravel's scheduler every minute:
+Configure the server cron scheduler to run Laravel's scheduler every minute:
 
 ```cron
-* * * * * cd /home/<user>/public_html/backend && php artisan schedule:run >/dev/null 2>&1
+* * * * * cd /path/to/tol-barbershop/backend && php artisan schedule:run >/dev/null 2>&1
 ```
 
 Without this cron job, inactive support tickets are not cancelled automatically.
 
 ## CORS and Sanctum
 
-Because the browser calls the backend directly, credentialed CORS is mandatory:
+Production browser requests are same-origin, so they do not require CORS or preflight access to another hostname. Keep Laravel's credentialed CORS support for the separate-origin local development setup only; never use `Access-Control-Allow-Origin: *` with credentials.
 
-- Credentialed CORS means `Access-Control-Allow-Origin` must echo exactly `https://www.saysontest.online` with `Access-Control-Allow-Credentials: true`. Never use `Access-Control-Allow-Origin: *`.
-- CORS must cover `api/*` (including `/api/v1/*`) and `sanctum/csrf-cookie`.
-- The `OPTIONS` preflight must allow the production Origin, the methods used (GET, POST, PUT, PATCH, DELETE, OPTIONS), and the headers `content-type`, `x-xsrf-token`, and `accept`.
-- `SANCTUM_STATEFUL_DOMAINS=www.saysontest.online,saysontest.online` makes Sanctum treat the frontend origin as stateful, so the SPA session cookie authenticates API calls.
-- Session authentication remains cookie-based. The `XSRF-TOKEN` cookie (readable by the frontend) must be echoed back as the `X-XSRF-TOKEN` header on state-changing requests; the `HttpOnly` session cookie is sent automatically by the shared cookie domain.
+Session authentication remains cookie-based. The readable `XSRF-TOKEN` cookie is echoed in the `X-XSRF-TOKEN` header on state-changing requests, while the `HttpOnly` session cookie is sent automatically through `credentials: include`.
 
-This exact CORS/CSRF behavior has been manually verified against `https://api.saysontest.online` (credentialed responses, preflight 204, CSRF cookie issuance, login, and authenticated `/api/v1/user`).
+## Server Layout
 
-## Shared Hosting Layout
+Only `backend/public` may be web-accessible through the Laravel routes. Never expose the repository root, `.env`, `vendor`, private storage, database files, or source files.
 
-On Hostinger, set the backend hostname document root to:
-
-```text
-/home/<user>/public_html/backend/public
-```
-
-Never expose the repository root, `.env`, `vendor`, `storage`, database files, or source files as web-accessible paths.
-
-Recommended permissions (run via SSH or File Manager):
+Recommended permissions:
 
 ```bash
 chmod 600 .env
@@ -155,7 +146,13 @@ chmod -R 775 storage bootstrap/cache
 
 Do not use `777` permissions. The PHP process owner must be able to write only to `storage/` and `bootstrap/cache/`.
 
-Do not create a public storage link for this deployment. Staff photo uploads and local staff-image delivery are intentionally disabled. Gallery images use Cloudinary.
+Create Laravel's public storage link when `/storage/*` is used:
+
+```bash
+php artisan storage:link
+```
+
+Configure Nginx to serve `/storage/*` from `backend/public/storage` without exposing other storage directories. Gallery images continue to use Cloudinary.
 
 ## Backend Deployment
 
@@ -176,7 +173,7 @@ GROUP BY date_closed
 HAVING COUNT(*) > 1;
 ```
 
-Connect to Hostinger via SSH and deploy from the `backend/` directory:
+Connect to the production server via SSH and deploy from the `backend/` directory:
 
 ```bash
 git pull origin main
@@ -195,8 +192,6 @@ php artisan optimize
 
 Do not run `composer update` on the production server. Deploy the reviewed `composer.lock` file.
 
-Hostinger uses OpenLiteSpeed. `.htaccess` rules in `backend/public` handle Laravel routing automatically. Do not disable or modify `.htaccess` unless Hostinger support confirms it is safe for your plan.
-
 ## Seeder Warning
 
 The current deployment seeders intentionally include known manager, barber, and customer credentials. This was retained for the deployment phase by explicit decision.
@@ -210,32 +205,32 @@ Never expose a seeded manager account while DNS or the public frontend is open t
 After deployment, verify frontend headers:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sS -D - -o /dev/null https://www.saysontest.online/
+curl --proto '=https' --tlsv1.2 -sS -D - -o /dev/null https://tolbarbershop.com/
 ```
 
 Confirm the response contains CSP, HSTS, frame denial, `nosniff`, referrer policy, permissions policy, and no `X-Powered-By` header.
 
-Verify the CSRF handshake directly against the backend as the primary test, using the frontend origin and referer so CORS and shared cookies are exercised:
+Verify the same-origin CSRF handshake through Nginx:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sS -c cookies.txt -D - -o /dev/null \
-  -H "Origin: https://www.saysontest.online" \
-  -H "Referer: https://www.saysontest.online/" \
-  https://api.saysontest.online/sanctum/csrf-cookie
+  -H "Origin: https://tolbarbershop.com" \
+  -H "Referer: https://tolbarbershop.com/" \
+  https://tolbarbershop.com/sanctum/csrf-cookie
 ```
 
-Confirm a `204` response that sets `XSRF-TOKEN` and session cookies scoped to `.saysontest.online` with `Secure` and `SameSite=Lax`, plus `Access-Control-Allow-Origin: https://www.saysontest.online` and `Access-Control-Allow-Credentials: true`. Confirm authenticated state-changing requests without a matching XSRF header receive HTTP 419.
+Confirm a `204` response that sets host-only `XSRF-TOKEN` and session cookies with `Secure` and `SameSite=Lax`. Confirm authenticated state-changing requests without a matching XSRF header receive HTTP 419.
 
-Verify direct authenticated API traffic from the frontend origin:
+Verify authenticated API traffic through the same origin:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sS -b cookies.txt \
-  -H "Origin: https://www.saysontest.online" \
-  -H "Referer: https://www.saysontest.online/" \
-  https://api.saysontest.online/api/v1/user
+  -H "Origin: https://tolbarbershop.com" \
+  -H "Referer: https://tolbarbershop.com/" \
+  https://tolbarbershop.com/api/v1/user
 ```
 
-It should return HTTP 200 with the current user and the credentialed CORS headers when a valid session exists.
+It should return HTTP 200 with the current user when a valid session exists.
 
 Verify these application cases manually:
 
@@ -255,21 +250,21 @@ Verify these application cases manually:
 
 ## Operational Protection
 
-Hostinger Premium's weekly backup is not sufficient for appointment data. Configure a daily MySQL backup or export to storage outside the hosting account. Encrypt it, retain at least seven daily and four weekly copies, and test a restore at least monthly. Keep the weekly Hostinger backup enabled as a second recovery path.
+Configure a daily MySQL backup or export to storage outside the production server. Encrypt it, retain at least seven daily and four weekly copies, and test a restore at least monthly. Keep any provider-managed backup enabled as a second recovery path.
 
 Configure uptime checks at five-minute intervals for all three paths and send failures to an actively monitored email or phone:
 
 ```text
-https://www.saysontest.online/
-https://api.saysontest.online/api/v1/public-booking-settings
-https://api.saysontest.online/up
+https://tolbarbershop.com/
+https://tolbarbershop.com/api/v1/public-booking-settings
+https://tolbarbershop.com/sanctum/csrf-cookie
 ```
 
-API health and application checks target `api.saysontest.online` directly rather than routing API monitoring through the frontend. Frontend health stays on `https://www.saysontest.online/`, and backend health stays on `https://api.saysontest.online/up`. Public API checks use `https://api.saysontest.online/api/v1/...`.
+All checks use `tolbarbershop.com` so they exercise the production Nginx routing layer. Frontend checks use `/`, public API checks use `/api/v1/*`, and the Sanctum check expects HTTP 204 from `/sanctum/csrf-cookie`.
 
-Configure error alerts for backend 5xx responses and Laravel production log errors. Review repeated 401, 403, 419, 422, and 429 responses for authentication, CSRF, validation, or abuse patterns. In Netlify, enable credit-usage notifications before the monthly allowance is exhausted and set more than one threshold so there is time to react.
+Configure error alerts for Nginx and backend 5xx responses plus Laravel production log errors. Review repeated 401, 403, 419, 422, and 429 responses for authentication, CSRF, validation, or abuse patterns.
 
-Run the public read workload against a staging deployment while watching Hostinger's PHP worker, CPU, and MySQL connection metrics:
+Run the public read workload against a staging deployment while watching PHP-FPM workers, CPU, memory, and MySQL connection metrics:
 
 ```bash
 node operations/load-test.mjs https://staging.example.com --confirm-staging
@@ -303,4 +298,4 @@ Keep automated database backups outside the hosting account and periodically tes
 
 The six-character password policy and absence of MFA are retained by explicit deployment decision. They should be reviewed before broader public use, especially for manager and admin accounts.
 
-The frontend CSP permits inline scripts because nonce-based Next.js CSP would force dynamic rendering and increase Edge Function usage. The application compensates by avoiding user-controlled HTML, removing `dangerouslySetInnerHTML`, disabling inline script attributes, enforcing server-side sanitization, and keeping all API authorization on Laravel.
+The frontend CSP permits inline scripts because nonce-based Next.js CSP would force dynamic rendering. The application compensates by avoiding user-controlled HTML, removing `dangerouslySetInnerHTML`, disabling inline script attributes, enforcing server-side sanitization, and keeping all API authorization on Laravel.

@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  CalendarDays,
   LogOut,
   Menu,
   MoreHorizontal,
@@ -144,21 +145,9 @@ export function ResponsiveSidebar({
     };
   }, [hasMobileDrawer, isOpen, isMobile]);
 
-  const totalBadgeCount = sections.reduce(
-    (sum, section) =>
-      sum +
-      section.items.reduce(
-        (itemSum, item) =>
-          itemSum +
-          (item.badgeCount ?? 0) +
-          (item.children?.reduce(
-            (childSum, child) => childSum + (child.badgeCount ?? 0),
-            0,
-          ) ?? 0),
-        0,
-      ),
-    0,
-  );
+  const schedulesItem = sections
+    .flatMap((section) => section.items)
+    .find((item) => item.key === "appointment");
 
   const handleNavClick = () => {
     setShowAccountMenu(false);
@@ -182,19 +171,52 @@ export function ResponsiveSidebar({
   return (
     <>
       {hasMobileDrawer && (
-        <button
-          id="hamburger-button"
-          onClick={() => setIsOpen(true)}
-          className="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-primary text-primary-foreground hover:bg-slate-800 transition-colors shadow-lg"
-          aria-label="Open menu"
-        >
-          <Menu className="w-6 h-6" />
-          {totalBadgeCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white ring-2 ring-white">
-              {totalBadgeCount > 99 ? "99+" : totalBadgeCount}
-            </span>
+        <header className="fixed inset-x-0 top-0 z-50 flex h-[calc(4rem+env(safe-area-inset-top))] items-center border-b border-gray-200 bg-white px-4 pt-[env(safe-area-inset-top)] md:hidden">
+          <button
+            id="hamburger-button"
+            type="button"
+            onClick={() => setIsOpen(true)}
+            className="flex size-9 items-center justify-center rounded-md text-primary transition-colors hover:bg-gray-100"
+            aria-label="Open menu"
+          >
+            <Menu className="size-5" />
+          </button>
+
+          <Link
+            href={`/${user?.role ?? "manager"}`}
+            prefetch={false}
+            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap text-sm font-semibold text-primary"
+          >
+            <Image
+              src="/tol-rounded-logo.png"
+              alt=""
+              aria-hidden="true"
+              height={22}
+              width={22}
+              className="rounded-md"
+            />
+            <span>TOL Barbershop</span>
+          </Link>
+
+          {schedulesItem ? (
+            <Link
+              href={schedulesItem.href}
+              prefetch={false}
+              onClick={handleNavClick}
+              className="relative ml-auto flex size-9 items-center justify-center rounded-md text-primary transition-colors hover:bg-gray-100"
+              aria-label={`Open schedules${schedulesItem.badgeCount ? ` (${schedulesItem.badgeCount} pending)` : ""}`}
+            >
+              <CalendarDays className="size-5" />
+              {schedulesItem.badgeCount && schedulesItem.badgeCount > 0 ? (
+                <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 py-0.5 text-[9px] font-semibold leading-none text-white ring-2 ring-white">
+                  {schedulesItem.badgeCount > 99 ? "99+" : schedulesItem.badgeCount}
+                </span>
+              ) : null}
+            </Link>
+          ) : (
+            <span className="ml-auto size-9" aria-hidden="true" />
           )}
-        </button>
+        </header>
       )}
 
       {hasMobileDrawer && isOpen && isMobile && (

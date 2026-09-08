@@ -195,10 +195,10 @@ export function Service() {
       await loadServices();
       setDeleteConfirmOpen(false);
       setServiceToDelete(null);
-      toast.success("Service archived");
+      toast.success("Service deleted");
     } catch (error) {
       console.error("Failed to delete service:", error);
-      toast.error(error instanceof Error ? error.message : "Could not archive service. Please try again.");
+      toast.error(error instanceof Error ? error.message : "Could not delete service. Please try again.");
     } finally {
       setIsDeleting(false);
     }
@@ -328,11 +328,11 @@ export function Service() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-red-500" />
-              Archive Service
+              Delete Service
             </DialogTitle>
             <DialogDescription>
-              Archive this service? Existing booking and reporting history
-              will be retained, and customers can no longer book it.
+              Delete this service? It will be removed from service lists, while
+              existing booking and reporting history will be retained.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -350,7 +350,7 @@ export function Service() {
               disabled={isDeleting}
               className="bg-red-500 hover:bg-red-600 text-white"
             >
-              {isDeleting ? "Archiving..." : "Archive"}
+              {isDeleting ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GalleryImageForm } from "@/forms/GalleryImageForm";
+import { useManagementModuleHeaderActions } from "@/layout/manager/ManagementModulePage";
 import { getCloudinaryImageUrl, isCloudinaryImageUrl } from "@/lib/cloudinary";
 import {
   galleryCategories,
@@ -44,6 +45,7 @@ import type { GalleryImageFormValues } from "@/validations/gallery-image.validat
 type CategoryFilter = "all" | GalleryCategory;
 
 export function Gallery() {
+  const { setHeaderActions } = useManagementModuleHeaderActions();
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] =
@@ -80,6 +82,21 @@ export function Gallery() {
     setEditingImage(null);
     setFormOpen(true);
   };
+
+  useEffect(() => {
+    setHeaderActions(
+      <button
+        type="button"
+        onClick={openCreateForm}
+        className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-red-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+      >
+        <Plus className="size-4" />
+        Add Image
+      </button>,
+    );
+
+    return () => setHeaderActions(null);
+  }, [setHeaderActions]);
 
   const openEditForm = (image: GalleryImage) => {
     setEditingImage(image);
@@ -138,25 +155,6 @@ export function Gallery() {
 
   return (
     <div className="w-full p-4 pb-12 font-sans sm:p-6 sm:pb-10">
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-xl font-bold text-gray-900">Landing Gallery</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage the images displayed in the public Services, Interior, and
-            Tools gallery.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={openCreateForm}
-          className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-600"
-        >
-          <Plus className="size-3.5" strokeWidth={2.5} />
-          <span className="hidden xs:inline">Add Image</span>
-          <span className="xs:hidden">Add</span>
-        </button>
-      </div>
-
       <div className="mb-5 grid grid-cols-4 gap-1 sm:flex sm:flex-wrap sm:gap-2">
         {filters.map((filter) => {
           const count =

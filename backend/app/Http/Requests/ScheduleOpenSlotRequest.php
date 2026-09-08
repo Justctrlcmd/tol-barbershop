@@ -36,7 +36,7 @@ class ScheduleOpenSlotRequest extends FormRequest
                     ->where('is_active', true)),
             ],
             'hour' => ['required', 'integer', 'between:1,12'],
-            'minute' => ['required', 'integer', 'between:0,59'],
+            'minute' => ['required', 'integer', 'between:0,55', 'multiple_of:5'],
             'period' => ['required', Rule::in(['AM', 'PM'])],
         ];
     }

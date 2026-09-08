@@ -38,6 +38,7 @@ class BookingScheduleService
     public function settingsPayload(?BookingSchedule $schedule = null): array
     {
         $schedule ??= $this->current();
+        $customOpenTimes = $this->customOpenTimes($schedule);
 
         return [
             'open_day_from' => $schedule->open_day_from,
@@ -45,7 +46,8 @@ class BookingScheduleService
             'closed_weekday' => $schedule->closed_weekday,
             'opening_time' => substr((string) $schedule->opening_time, 0, 5),
             'closing_time' => substr((string) $schedule->closing_time, 0, 5),
-            'custom_open_time' => substr((string) $schedule->custom_open_time, 0, 5),
+            'custom_open_time' => $customOpenTimes[0],
+            'custom_open_times' => $customOpenTimes,
             'booking_days_ahead' => $schedule->booking_days_ahead,
             'slot_interval_minutes' => self::SLOT_INTERVAL_MINUTES,
             'max_slots_per_booking' => self::MAX_SLOTS_PER_BOOKING,
@@ -88,16 +90,20 @@ class BookingScheduleService
     {
         $opening = $this->timeToMinutes((string) $this->value($schedule, 'opening_time'));
         $closing = $this->timeToMinutes((string) $this->value($schedule, 'closing_time'));
-        $customOpenTime = $this->normalizeTime((string) $this->value($schedule, 'custom_open_time'));
+        $customOpenTimes = $this->customOpenTimes($schedule);
         $times = [];
 
         for ($minutes = $opening; $minutes <= $closing; $minutes += self::SLOT_INTERVAL_MINUTES) {
-            $times[] = $minutes === 720
-                ? $customOpenTime
-                : $this->minutesToTime($minutes);
+            if ($minutes !== 720) {
+                $times[] = $this->minutesToTime($minutes);
+            }
         }
 
-        return $times;
+        return collect([...$times, ...$customOpenTimes])
+            ->unique()
+            ->sortBy(fn (string $time): int => $this->timeToMinutes($time))
+            ->values()
+            ->all();
     }
 
     public function startTimesFor(string|CarbonInterface $date, int $barberUserId): array
@@ -199,6 +205,22 @@ class BookingScheduleService
     private function value(BookingSchedule|array $schedule, string $key): mixed
     {
         return is_array($schedule) ? ($schedule[$key] ?? null) : $schedule->{$key};
+    }
+
+    private function customOpenTimes(BookingSchedule|array $schedule): array
+    {
+        $times = $this->value($schedule, 'custom_open_times');
+        if (! is_array($times) || $times === []) {
+            $times = [$this->value($schedule, 'custom_open_time')];
+        }
+
+        return collect($times)
+            ->filter(fn (mixed $time): bool => is_string($time) && $time !== '')
+            ->map(fn (string $time): string => $this->normalizeTime($time))
+            ->unique()
+            ->sortBy(fn (string $time): int => $this->timeToMinutes($time))
+            ->values()
+            ->all();
     }
 
     private function shopTimezone(): string

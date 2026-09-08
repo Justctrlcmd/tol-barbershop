@@ -1,4 +1,22 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { createContext, useContext, useState, type ReactNode } from "react";
+
+type ManagementModuleHeaderActionsContextValue = {
+  setHeaderActions: (actions: ReactNode) => void;
+};
+
+const ManagementModuleHeaderActionsContext = createContext<ManagementModuleHeaderActionsContextValue | null>(null);
+
+export function useManagementModuleHeaderActions() {
+  const context = useContext(ManagementModuleHeaderActionsContext);
+
+  if (!context) {
+    throw new Error("useManagementModuleHeaderActions must be used within ManagementModulePage");
+  }
+
+  return context;
+}
 
 type ManagementModulePageProps = {
   title: string;
@@ -11,18 +29,22 @@ export function ManagementModulePage({
   description,
   children,
 }: ManagementModulePageProps) {
+  const [headerActions, setHeaderActions] = useState<ReactNode>(null);
+
   return (
-    <div className="min-h-full w-full bg-slate-100 font-sans">
-      <header className="px-4 pt-4 sm:px-6 sm:pt-6">
-        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-          Management
-        </p>
-        <h1 className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">
-          {title}
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">{description}</p>
-      </header>
-      {children}
-    </div>
+    <ManagementModuleHeaderActionsContext.Provider value={{ setHeaderActions }}>
+      <div className="min-h-full w-full bg-slate-100 font-sans">
+        <header className="flex flex-col gap-4 px-4 pt-4 sm:flex-row sm:items-start sm:justify-between sm:px-6 sm:pt-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+              {title}
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">{description}</p>
+          </div>
+          {headerActions ? <div className="flex shrink-0 gap-2">{headerActions}</div> : null}
+        </header>
+        {children}
+      </div>
+    </ManagementModuleHeaderActionsContext.Provider>
   );
 }

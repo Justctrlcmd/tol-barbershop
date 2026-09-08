@@ -82,7 +82,7 @@ class Appointment extends Model
 
     public function service(): BelongsTo
     {
-        return $this->belongsTo(Service::class, 'service_id');
+        return $this->belongsTo(Service::class, 'service_id')->withTrashed();
     }
 
     public function addOns(): HasMany

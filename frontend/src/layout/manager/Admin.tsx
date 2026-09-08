@@ -9,8 +9,9 @@ import {
   Shield,
   Check,
   ChevronDown,
-  Mail,
-  Phone,
+  UserCheck,
+  UserRoundX,
+  Users,
 } from "lucide-react";
 import {
   Pagination,
@@ -41,6 +42,7 @@ import {
 } from "@/services/manager/role.api";
 import { CheckboxWithLabel } from "@/components/common/CheckboxWithLabel";
 import { InputWithLabel } from "@/components/common/InputWithLabel";
+import { useManagementModuleHeaderActions } from "@/layout/manager/ManagementModulePage";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +74,7 @@ const isActiveValue = (value: unknown): boolean => {
 };
 
 export function Admin() {
+  const { setHeaderActions } = useManagementModuleHeaderActions();
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
@@ -189,14 +192,44 @@ export function Admin() {
     setShowRoleModal(true);
   };
 
+  useEffect(() => {
+    setHeaderActions(
+      <>
+        <button
+          onClick={openAddRole}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          <Plus className="size-4" />
+          Create Role
+        </button>
+        <button
+          onClick={openAddAdmin}
+          className="flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+        >
+          <Plus className="size-4" />
+          Add Admin
+        </button>
+      </>,
+    );
+
+    return () => setHeaderActions(null);
+  }, [setHeaderActions]);
+
   const openEditRole = (role: Role) => {
     setEditingRole(role);
     setRoleName(role.name);
-    setSelectedModuleIds(role.modules.map((m) => m.id));
+    const assignedIds = new Set(role.modules.map((module) => module.id));
+    const assignedKeys = new Set(role.modules.map((module) => module.key));
+    setSelectedModuleIds(modules
+      .filter((module) => !modules.some((child) => child.parent_key === module.key))
+      .filter((module) => assignedIds.has(module.id)
+        || (module.parent_key !== null && assignedKeys.has(module.parent_key)))
+      .map((module) => module.id));
     setExpandedModuleKeys(
-      role.modules.some((module) => module.parent_key !== null)
-        ? ["management"]
-        : [],
+      modules
+        .filter((module) => modules.some((child) => child.parent_key === module.key
+          && (assignedIds.has(child.id) || assignedKeys.has(module.key))))
+        .map((module) => module.key),
     );
     setShowRoleModal(true);
   };
@@ -289,37 +322,34 @@ export function Admin() {
       return;
     }
 
-    const childIds = children.map((child) => child.id);
-    setSelectedModuleIds((previous) => {
-      const hasAllChildren = childIds.every((id) => previous.includes(id));
-      if (previous.includes(module.id) || hasAllChildren) {
-        return previous.filter((id) => id !== module.id && !childIds.includes(id));
-      }
-
-      return [...new Set([...previous, module.id, ...childIds])];
-    });
+    setExpandedModuleKeys((previous) => previous.includes(module.key)
+      ? previous.filter((key) => key !== module.key)
+      : [...previous, module.key]);
   };
 
-  const toggleModuleChild = (parent: Module, children: Module[], childId: number) => {
-    setSelectedModuleIds((previous) => {
-      if (previous.includes(parent.id)) {
-        return [
-          ...children
-            .map((child) => child.id)
-            .filter((id) => id !== childId),
-        ];
-      }
+  const parentModules = modules
+    .filter((module) => module.parent_key === null)
+    .sort((left, right) => {
+      const moduleOrder = [
+        "dashboard",
+        "appointment",
+        "walkin",
+        "history",
+        "crm",
+        "management",
+        "reports",
+        "feedback",
+      ];
 
-      const next = previous.includes(childId)
-        ? previous.filter((id) => id !== childId)
-        : [...previous, childId];
-      const childIds = children.map((child) => child.id);
-      const allChildrenSelected = childIds.every((id) => next.includes(id));
+      const leftIndex = moduleOrder.indexOf(left.key);
+      const rightIndex = moduleOrder.indexOf(right.key);
 
-      if (allChildrenSelected) return [...new Set([...next, parent.id])];
-      return next.filter((id) => id !== parent.id);
+      return (leftIndex === -1 ? moduleOrder.length : leftIndex)
+        - (rightIndex === -1 ? moduleOrder.length : rightIndex);
     });
-  };
+
+  const activeAdminCount = admins.filter((admin) => isActiveValue(admin.is_active)).length;
+  const inactiveAdminCount = admins.length - activeAdminCount;
 
   if (loading) {
     return (
@@ -330,169 +360,76 @@ export function Admin() {
   }
 
   return (
-    <div className="w-full h-full p-4 sm:p-6 pb-12 sm:pb-10 font-sans">
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Roles</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Manage permission roles for admin accounts
-            </p>
+    <div className="w-full p-4 pb-12 font-sans sm:p-6 sm:pb-10">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        {[
+          { label: "Total admins", value: admins.length, icon: Users, iconClassName: "bg-slate-100 text-slate-600" },
+          { label: "Active", value: activeAdminCount, icon: UserCheck, iconClassName: "bg-green-50 text-green-600" },
+          { label: "Inactive", value: inactiveAdminCount, icon: UserRoundX, iconClassName: "bg-gray-100 text-gray-500" },
+          { label: "Roles", value: roles.length, icon: Shield, iconClassName: "bg-red-50 text-red-500" },
+        ].map(({ label, value, icon: Icon, iconClassName }) => (
+          <div key={label} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+            <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl", iconClassName)}>
+              <Icon className="size-5" />
+            </span>
+            <div>
+              <p className="text-xl font-bold leading-none text-gray-900">{value}</p>
+              <p className="mt-1 text-xs font-medium text-gray-500">{label}</p>
+            </div>
           </div>
-          <button
-            onClick={openAddRole}
-            className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 transition-colors text-white font-semibold rounded-lg px-3 py-1.5 text-xs whitespace-nowrap"
-          >
-            <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
-            <span className="hidden xs:inline">Create Role</span>
-            <span className="xs:hidden">Add</span>
-          </button>
-        </div>
+        ))}
+      </section>
 
-        {roles.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-10 text-center flex flex-col items-center justify-center">
-            <Shield className="w-12 h-12 text-gray-300 mb-3" />
-            <h3 className="text-base font-semibold text-gray-500 mb-1">No Roles Yet</h3>
-            <p className="text-sm text-gray-400">
-              Create a role to assign module permissions to admin accounts.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {roles.map((role) => (
-              <div
-                key={role.id}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-5 h-5 text-red-500" />
-                    <h3 className="font-bold text-gray-900">{role.name}</h3>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => openEditRole(role)}
-                      className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <Pencil className="w-4 h-4 text-gray-500" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteRole(role.id)}
-                      className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-400" />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {role.modules.map((mod) => (
-                    <span
-                      key={mod.id}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full"
-                    >
-                      <Check className="w-3 h-3" />
-                      {mod.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Admins</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Manage admin accounts and assign roles
-            </p>
-          </div>
-          <button
-            onClick={openAddAdmin}
-            className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 transition-colors text-white font-semibold rounded-lg px-3 py-1.5 text-xs whitespace-nowrap"
-          >
-            <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
-            <span className="hidden xs:inline">Add Admin</span>
-            <span className="xs:hidden">Add</span>
-          </button>
+      <section className="mt-6">
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-gray-900">Admins</h2>
+          <p className="mt-0.5 text-sm text-gray-500">Admin accounts with their assigned role.</p>
         </div>
 
         {admins.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-10 text-center flex flex-col items-center justify-center">
-            <AlertTriangle className="w-12 h-12 text-gray-300 mb-3" />
-            <h3 className="text-base font-semibold text-gray-500 mb-1">No Admins Yet</h3>
-            <p className="text-sm text-gray-400">
-              Add an admin account to manage the barbershop system.
-            </p>
+          <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+            <AlertTriangle className="mb-3 size-10 text-gray-300" />
+            <h3 className="text-base font-semibold text-gray-700">No admins yet</h3>
+            <p className="mt-1 text-sm text-gray-400">Add an admin account to manage the barbershop system.</p>
           </div>
         ) : (
           <>
             <div className="flex flex-col gap-3 md:hidden">
               {paginatedAdmins.map((admin) => (
-                <div
-                  key={admin.id}
-                  className="bg-white rounded-xl border border-gray-200 shadow-sm p-4"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-600">
-                        {admin.fullname.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-900 text-sm">{admin.fullname}</p>
-                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <Mail className="w-3 h-3" />
-                          {admin.email}
-                        </div>
-                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <Phone className="w-3 h-3" />
-                          {admin.contact_number}
-                        </div>
-                      </div>
+                <div key={admin.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900">{admin.fullname}</p>
+                      <p className="mt-0.5 truncate text-xs text-gray-500">{admin.email}</p>
+                      <p className="mt-1 text-xs text-gray-500">{admin.contact_number}</p>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => openEditAdmin(admin)}
-                        className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        <Pencil className="w-4 h-4 text-gray-500" />
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button onClick={() => openEditAdmin(admin)} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100" aria-label={`Edit ${admin.fullname}`}>
+                        <Pencil className="size-4" />
                       </button>
-                      <button
-                        onClick={() => handleDeleteAdmin(admin.id)}
-                        className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-400" />
+                      <button onClick={() => handleDeleteAdmin(admin.id)} className="rounded-md p-1.5 text-red-400 hover:bg-red-50" aria-label={`Delete ${admin.fullname}`}>
+                        <Trash2 className="size-4" />
                       </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {admin.role_name ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
-                        <Shield className="w-3 h-3" />
-                        {admin.role_name}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400 text-xs italic">No role</span>
-                    )}
-                    <span
-                      className={cn("text-xs font-medium px-2 py-0.5 rounded-full", !isActiveValue(admin.is_active) ? "bg-gray-100 text-gray-500" : "bg-green-100 text-green-600")}
-                    >
-                      {!isActiveValue(admin.is_active) ? "Inactive" : "Active"}
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="rounded-full border border-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">{admin.role_name ?? "No role"}</span>
+                    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", isActiveValue(admin.is_active) ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500")}>
+                      {isActiveValue(admin.is_active) ? "Active" : "Inactive"}
                     </span>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="hidden md:block bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+            <div className="hidden overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm md:block">
               <Table>
                 <TableHeader className="bg-gray-50">
                   <TableRow>
+                    <TableHead>Admin ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead>Phone</TableHead>
+                    <TableHead>Contact number</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -501,47 +438,25 @@ export function Admin() {
                 <TableBody>
                   {paginatedAdmins.map((admin) => (
                     <TableRow key={admin.id}>
-                      <TableCell className="font-medium text-gray-900">
-                        {admin.fullname}
-                      </TableCell>
-                      <TableCell className="text-gray-600">
-                        {admin.email}
-                      </TableCell>
-                      <TableCell className="text-gray-600">
-                        {admin.contact_number}
+                      <TableCell className="font-mono text-xs font-semibold text-gray-700">ADM-{String(admin.id).padStart(4, "0")}</TableCell>
+                      <TableCell className="font-medium text-gray-900">{admin.fullname}</TableCell>
+                      <TableCell className="text-gray-600">{admin.email}</TableCell>
+                      <TableCell className="text-gray-600">{admin.contact_number}</TableCell>
+                      <TableCell>
+                        <span className="rounded-full border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700">{admin.role_name ?? "No role"}</span>
                       </TableCell>
                       <TableCell>
-                        {admin.role_name ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
-                            <Shield className="w-3 h-3" />
-                            {admin.role_name}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 text-sm italic">
-                            No role
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={cn("text-xs font-medium px-2.5 py-1 rounded-full", !isActiveValue(admin.is_active) ? "bg-gray-100 text-gray-500" : "bg-green-100 text-green-600")}
-                        >
-                          {!isActiveValue(admin.is_active) ? "Inactive" : "Active"}
+                        <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium", isActiveValue(admin.is_active) ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500")}>
+                          {isActiveValue(admin.is_active) ? "Active" : "Inactive"}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => openEditAdmin(admin)}
-                            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                          >
-                            <Pencil className="w-4 h-4 text-gray-500" />
+                        <div className="flex justify-end gap-1">
+                          <button onClick={() => openEditAdmin(admin)} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100" aria-label={`Edit ${admin.fullname}`}>
+                            <Pencil className="size-4" />
                           </button>
-                          <button
-                            onClick={() => handleDeleteAdmin(admin.id)}
-                            className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-400" />
+                          <button onClick={() => handleDeleteAdmin(admin.id)} className="rounded-md p-1.5 text-red-400 hover:bg-red-50" aria-label={`Delete ${admin.fullname}`}>
+                            <Trash2 className="size-4" />
                           </button>
                         </div>
                       </TableCell>
@@ -550,71 +465,95 @@ export function Admin() {
                 </TableBody>
               </Table>
             </div>
-
-            {adminTotalPages > 1 && (
-              <Pagination className="mt-4 overflow-hidden px-1">
-                <PaginationContent className="flex-nowrap gap-0.5">
-                  <PaginationItem>
-                    <PaginationPrevious
-                      href="#"
-                      className="h-8 w-8 sm:h-9 sm:w-auto"
-                      text=""
-                      onClick={(event) => {
-                        event.preventDefault();
-                        setAdminPage((prev) => Math.max(1, prev - 1));
-                      }}
-                    />
-                  </PaginationItem>
-                  {(() => {
-                    const pages: (number | "...")[] = [];
-                    const total = adminTotalPages;
-                    const current = adminPage;
-                    pages.push(1);
-                    if (current > 3) pages.push("...");
-                    const start = Math.max(2, current - 1);
-                    const end = Math.min(total - 1, current + 1);
-                    for (let i = start; i <= end; i++) pages.push(i);
-                    if (current < total - 2) pages.push("...");
-                    if (total > 1) pages.push(total);
-                    return pages.map((pageNo, idx) =>
-                      pageNo === "..." ? (
-                        <PaginationItem key={`ellipsis-${idx}`}>
-                          <PaginationEllipsis className="size-7 sm:size-8" />
-                        </PaginationItem>
-                      ) : (
-                        <PaginationItem key={pageNo}>
-                          <PaginationLink
-                            href="#"
-                            isActive={pageNo === current}
-                            className="h-7 w-7 sm:h-8 sm:w-8 text-xs sm:text-sm font-medium rounded-lg"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              setAdminPage(pageNo);
-                            }}
-                          >
-                            {pageNo}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ),
-                    );
-                  })()}
-                  <PaginationItem>
-                    <PaginationNext
-                      href="#"
-                      className="h-8 w-8 sm:h-9 sm:w-auto"
-                      text=""
-                      onClick={(event) => {
-                        event.preventDefault();
-                        setAdminPage((prev) => Math.min(adminTotalPages, prev + 1));
-                      }}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            )}
           </>
         )}
-      </div>
+
+        {admins.length > 0 && adminTotalPages > 1 && (
+          <Pagination className="mt-4 overflow-hidden px-1">
+            <PaginationContent className="flex-nowrap gap-0.5">
+              <PaginationItem>
+                <PaginationPrevious href="#" className="h-8 w-8 sm:h-9 sm:w-auto" text="" onClick={(event) => { event.preventDefault(); setAdminPage((prev) => Math.max(1, prev - 1)); }} />
+              </PaginationItem>
+              {(() => {
+                const pages: (number | "...")[] = [];
+                const total = adminTotalPages;
+                const current = adminPage;
+                pages.push(1);
+                if (current > 3) pages.push("...");
+                for (let index = Math.max(2, current - 1); index <= Math.min(total - 1, current + 1); index++) pages.push(index);
+                if (current < total - 2) pages.push("...");
+                if (total > 1) pages.push(total);
+                return pages.map((pageNo, index) => pageNo === "..." ? (
+                  <PaginationItem key={`ellipsis-${index}`}><PaginationEllipsis className="size-7 sm:size-8" /></PaginationItem>
+                ) : (
+                  <PaginationItem key={pageNo}>
+                    <PaginationLink href="#" isActive={pageNo === current} className="h-7 w-7 rounded-lg text-xs font-medium sm:h-8 sm:w-8 sm:text-sm" onClick={(event) => { event.preventDefault(); setAdminPage(pageNo); }}>
+                      {pageNo}
+                    </PaginationLink>
+                  </PaginationItem>
+                ));
+              })()}
+              <PaginationItem>
+                <PaginationNext href="#" className="h-8 w-8 sm:h-9 sm:w-auto" text="" onClick={(event) => { event.preventDefault(); setAdminPage((prev) => Math.min(adminTotalPages, prev + 1)); }} />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-gray-900">Roles</h2>
+          <p className="mt-0.5 text-sm text-gray-500">Reusable module permissions assigned to admin accounts.</p>
+        </div>
+
+        {roles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+            <Shield className="mb-3 size-10 text-gray-300" />
+            <h3 className="text-base font-semibold text-gray-700">No roles yet</h3>
+            <p className="mt-1 text-sm text-gray-400">Create a role to assign module permissions to admin accounts.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {roles.map((role) => {
+              const assignedAdminCount = admins.filter((admin) => admin.role_id === role.id).length;
+
+              return (
+                <article key={role.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Shield className="size-4 shrink-0 text-red-500" />
+                        <h3 className="truncate font-semibold text-gray-900">{role.name}</h3>
+                        <span className="shrink-0 rounded-full border border-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+                          {assignedAdminCount} {assignedAdminCount === 1 ? "admin" : "admins"}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">Reusable access profile.</p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <button onClick={() => openEditRole(role)} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100" aria-label={`Edit ${role.name}`}>
+                        <Pencil className="size-4" />
+                      </button>
+                      <button onClick={() => handleDeleteRole(role.id)} className="rounded-md p-1.5 text-red-400 hover:bg-red-50" aria-label={`Delete ${role.name}`}>
+                        <Trash2 className="size-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {role.modules.map((module) => (
+                      <span key={module.id} className="inline-flex items-center gap-1 rounded-full border border-red-100 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                        <Check className="size-3" />
+                        {module.name}
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <AdminForm
         open={showAdminModal}
@@ -708,53 +647,44 @@ export function Admin() {
               <p className="block text-sm font-medium text-gray-700 mb-2">
                 Module Permissions
               </p>
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-2">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {modules
-                    .filter((module) => module.parent_key === null)
-                    .map((module) => {
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
+                <div className="space-y-1.5">
+                  {parentModules.map((module) => {
                       const children = modules.filter(
                         (child) => child.parent_key === module.key,
                       );
                       const isExpanded = expandedModuleKeys.includes(module.key);
-                      const allChildrenSelected =
-                        children.length > 0 &&
-                        children.every((child) => selectedModuleIds.includes(child.id));
-                      const isSelected = selectedModuleIds.includes(module.id) || allChildrenSelected;
+                      const isSelected = selectedModuleIds.includes(module.id);
 
                       return (
                         <div
                           key={module.id}
                           className={cn(
-                            "rounded-lg border border-gray-200 transition-colors hover:bg-gray-50",
-                            children.length > 0 && "sm:col-span-2",
+                            "rounded-lg border border-gray-200 transition-colors",
+                            isSelected && "border-red-200 bg-red-50/40",
+                            children.length > 0 && "mt-2",
                           )}
                         >
-                          <div className="flex items-start gap-3 p-3">
+                          <div className="flex items-center justify-between gap-3 px-3 py-2.5">
                             <CheckboxWithLabel
                               id={`module-${module.id}`}
-                              label={
-                                <span>
-                                  <span className="block font-semibold text-gray-900">
-                                    {module.name}
-                                  </span>
-                                  {children.length > 0 && (
-                                    <span className="block text-xs font-normal text-gray-500">
-                                      Select all {module.name} workspaces, then clear any submodule this role should not use.
-                                    </span>
-                                  )}
-                                </span>
-                              }
-                              checked={isSelected}
+                              label={module.name}
+                              checked={children.length > 0 ? isExpanded : isSelected}
+                              disabled={isSavingRole}
+                              aria-expanded={children.length > 0 ? isExpanded : undefined}
+                              aria-controls={children.length > 0 ? `submodules-${module.id}` : undefined}
                               onCheckedChange={() => toggleModuleGroup(module, children)}
                               containerClassName="flex-1 border-0 p-0"
-                              className="mt-0.5 border-gray-300 data-checked:border-red-500 data-checked:bg-red-500"
-                              labelClassName="flex-1"
+                              className="border-gray-300 data-checked:border-red-500 data-checked:bg-red-500"
+                              labelClassName="flex-1 font-medium text-gray-900"
                             />
                             {children.length > 0 && (
                               <button
                                 type="button"
                                 aria-label={`${isExpanded ? "Hide" : "Show"} ${module.name} submodules`}
+                                aria-expanded={isExpanded}
+                                aria-controls={`submodules-${module.id}`}
+                                disabled={isSavingRole}
                                 onClick={() =>
                                   setExpandedModuleKeys((previous) =>
                                     previous.includes(module.key)
@@ -772,22 +702,21 @@ export function Admin() {
                           </div>
 
                           {isExpanded && children.length > 0 && (
-                            <div className="grid gap-2 border-t border-gray-200 bg-gray-50/60 p-3 sm:grid-cols-2">
+                            <div id={`submodules-${module.id}`} className="mx-3 space-y-1 border-t border-gray-200 py-2">
                               {children.map((child) => (
                                 <CheckboxWithLabel
                                   key={child.id}
                                   id={`module-${child.id}`}
                                   label={child.name}
-                                  checked={
-                                    selectedModuleIds.includes(module.id) ||
-                                    selectedModuleIds.includes(child.id)
-                                  }
-                                  onCheckedChange={() =>
-                                    toggleModuleChild(module, children, child.id)
-                                  }
-                                  containerClassName="rounded-lg border border-gray-200 bg-white p-2.5 transition-colors hover:bg-gray-50"
-                                  className="mt-0.5 border-gray-300 data-checked:border-red-500 data-checked:bg-red-500"
-                                  labelClassName="flex-1 font-medium text-gray-900"
+                                  checked={selectedModuleIds.includes(child.id)}
+                                  disabled={isSavingRole}
+                                  onCheckedChange={() => toggleModule(child.id)}
+                                  containerClassName={cn(
+                                    "rounded-md px-2 py-1.5 transition-colors hover:bg-gray-50",
+                                    selectedModuleIds.includes(child.id) && "border-red-200 bg-red-50/40",
+                                  )}
+                                  className="border-gray-300 data-checked:border-red-500 data-checked:bg-red-500"
+                                  labelClassName="flex-1 text-sm font-medium text-gray-900"
                                 />
                               ))}
                             </div>

@@ -125,15 +125,15 @@ class ServiceController extends Controller
                 return $this->error('Service not found', [], 404);
             }
 
-            $service->update(['is_active' => false]);
+            $service->delete();
             EntityChange::dispatch('services');
 
-            return $this->success('Service archived successfully');
+            return $this->success('Service deleted successfully');
 
         } catch (Throwable $exception) {
             report($exception);
 
-            return $this->error('Could not archive service', [], 500);
+            return $this->error('Could not delete service', [], 500);
         }
     }
 }

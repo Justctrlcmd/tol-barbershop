@@ -34,7 +34,7 @@ function schedulePayload(array $overrides = []): array
         'closed_weekday' => 7,
         'opening_time' => '09:00',
         'closing_time' => '19:00',
-        'custom_open_time' => '12:30',
+        'custom_open_times' => ['12:30'],
         'booking_days_ahead' => 7,
         ...$overrides,
     ];
@@ -49,6 +49,7 @@ test('whole-operation schedule validates dependent ranges and booking window', f
         ->assertJsonPath('data.open_day_to', 7)
         ->assertJsonPath('data.closed_weekday', 7)
         ->assertJsonPath('data.custom_open_time', '12:30')
+        ->assertJsonPath('data.custom_open_times', ['12:30'])
         ->assertJsonPath('data.booking_days_ahead', 7);
 
     $this->putJson('/api/v1/booking-schedule', schedulePayload([
@@ -58,6 +59,13 @@ test('whole-operation schedule validates dependent ranges and booking window', f
     ]))
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['open_day_to', 'booking_days_ahead']);
+});
+
+test('only managers can update the operation configuration', function () {
+    Sanctum::actingAs(scheduleUser('admin'));
+
+    $this->putJson('/api/v1/booking-schedule', schedulePayload())
+        ->assertForbidden();
 });
 
 test('schedule changes are effective today and block active appointment conflicts', function () {
@@ -115,16 +123,38 @@ test('recurring custom time applies to every open date from today forward', func
     Sanctum::actingAs($manager);
 
     $this->putJson('/api/v1/booking-schedule', schedulePayload([
-        'custom_open_time' => '14:30',
+        'custom_open_times' => ['14:30', '15:35'],
     ]))
         ->assertOk()
         ->assertJsonPath('data.custom_open_time', '14:30')
+        ->assertJsonPath('data.custom_open_times', ['14:30', '15:35'])
         ->assertJsonPath('data.effective_from', '2026-09-07');
 
     $this->getJson("/api/v1/public-booking/available-slots?barber_id={$barber->id}&date=2026-09-08")
         ->assertOk()
         ->assertJsonFragment(['14:30'])
+        ->assertJsonFragment(['15:35'])
         ->assertJsonMissing(['12:00']);
+});
+
+test('custom times and open slots must use five-minute increments', function () {
+    Sanctum::actingAs(scheduleUser('manager'));
+
+    $this->putJson('/api/v1/booking-schedule', schedulePayload([
+        'custom_open_times' => ['12:32'],
+    ]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('custom_open_times.0');
+
+    $this->postJson('/api/v1/schedule-open-slots', [
+        'slot_date' => '2026-09-08',
+        'barber_user_ids' => [scheduleUser('barber')->id],
+        'hour' => 2,
+        'minute' => 32,
+        'period' => 'PM',
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('minute');
 });
 
 test('custom open slots expose a recurring closed day for multiple barbers', function () {

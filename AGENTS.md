@@ -6,8 +6,7 @@
 **Auth:** Sanctum SPA cookie auth, 3 roles: `customer`, `admin`, `manager`
 **Database:** MySQL 8+ via Eloquent ORM
 **Realtime:** Version-based polling via `EntityChange` (no SSE, no WebSockets)
-**Production Backend:** Hostinger Premium Shared Hosting (1 CPU, 2 GB RAM, 40 PHP workers, 50 MySQL connections)
-**Production Frontend:** Netlify Free (custom domain, commercial use allowed)
+**Production:** `https://tolbarbershop.com` behind Nginx, with Next.js and Laravel served from one origin
 **Dev Tunnel:** ngrok only — never optimize production for ngrok/localhost
 
 ---
@@ -17,13 +16,14 @@
 ### Frontend ↔ Backend Flow
 
 ```
-Browser → Next.js Middleware (proxy.ts) ← auth_role cookie
-        → next.config.ts API rewrites (/api/* → backend)
-        → Laravel Sanctum (CSRF cookie → X-XSRF-TOKEN header)
-        → auth:sanctum middleware → EnsureRole middleware → Controller
+Browser → Nginx
+        ├── / → Next.js → proxy.ts route protection
+        ├── /api/v1/* → Laravel → auth:sanctum → EnsureRole → Controller
+        ├── /sanctum/* → Laravel Sanctum CSRF cookie endpoint
+        └── /storage/* → Laravel public storage
 ```
 
-> On production, Next.js rewrites are served through Netlify's Edge Functions (OpenNext adapter). The browser never calls the backend hostname directly.
+> Production API and Sanctum requests use same-origin paths. Nginx routes them directly to Laravel; Next.js does not proxy them.
 
 ### Key Files
 
@@ -33,7 +33,7 @@ Browser → Next.js Middleware (proxy.ts) ← auth_role cookie
 | `frontend/src/proxy.ts` | Middleware: role-based route protection |
 | `frontend/src/contexts/AuthContext.tsx` | Auth state management |
 | `frontend/src/contexts/RealtimeContext.tsx` | Polling subscription via EntityChange |
-| `frontend/next.config.ts` | API rewrites config |
+| `frontend/next.config.ts` | Next.js and security-header config |
 
 ### Route Structure
 
@@ -543,20 +543,19 @@ Do NOT ask when:
 
 ## 10. Production Constraints
 
-**Shared hosting (Hostinger Premium):** 1 CPU, 2 GB RAM, 40 PHP workers, 50 MySQL connections. Redis is unavailable. No persistent queue workers. No long-running processes (SSE/WebSocket).
-
-**Frontend (Netlify):** Free plan supports commercial use with custom domains. No Node.js runtime — runs as static + Edge Functions via OpenNext adapter.
+**Production routing:** Nginx serves `https://tolbarbershop.com`, sends `/` to Next.js, sends `/api/v1/*` and `/sanctum/*` directly to Laravel, and serves `/storage/*` from Laravel public storage.
 
 **Hard rules:**
-- Never assume Redis, Supervisor, Docker, or persistent workers on shared hosting
+- Do not add Next.js API/Sanctum rewrites, external-backend fallbacks, or platform redirects
+- Keep `NEXT_PUBLIC_API_URL=/api/v1` and leave `NEXT_PUBLIC_API_ORIGIN` unset or empty in production
+- Keep Sanctum requests same-origin and credentialed
 - Never optimize production for ngrok or localhost — these are dev-only
 - Never use `next dev` timings to judge production performance
 - Minimize API fan-out: each page should make as few initial requests as possible
 - Consolidate multiple analytics/list endpoints into fewer backend calls
-- Keep `QUEUE_CONNECTION=sync` unless a supervised worker is confirmed
+- Do not assume Redis or persistent queue workers unless the production server explicitly provides them
 - Use `php artisan optimize` (route + config caching) on every deploy
-- Session/cache/drivers must work with database on shared hosting
-- Push notifications must be dispatched inline (no queue workers) or gracefully degraded
+- Push notifications must be dispatched inline or gracefully degraded unless a supervised worker is confirmed
 - Heavy client modules (PDF, charts, dialogs) must be dynamically imported
 
 ## 11. Toke Saving Rule

@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { Plus, AlertTriangle, Mail, Pencil, Phone, Trash2, User } from "lucide-react";
 import { BarberForm } from "@/forms/BarberForm";
+import { useManagementModuleHeaderActions } from "@/layout/manager/ManagementModulePage";
 import { BarberSchemaFormValues } from "@/validations/staff.validation";
 import {
   getBarbers,
@@ -99,6 +100,7 @@ function BarberCard({
 }
 
 export function Barber() {
+  const { setHeaderActions } = useManagementModuleHeaderActions();
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -127,6 +129,21 @@ export function Barber() {
     setEditingBarber(null);
     setShowModal(true);
   };
+
+  useEffect(() => {
+    setHeaderActions(
+      <button
+        type="button"
+        onClick={openAddModal}
+        className="flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+      >
+        <Plus className="size-4" />
+        Add Barber
+      </button>,
+    );
+
+    return () => setHeaderActions(null);
+  }, [setHeaderActions]);
 
   const openEditModal = (barber: Barber) => {
     setEditingBarber(barber);
@@ -177,17 +194,6 @@ export function Barber() {
 
   return (
     <div className="w-full h-full p-4 sm:p-6 pb-12 sm:pb-10 font-sans">
-      <div className="flex justify-end mb-4">
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 transition-colors text-white font-semibold rounded-lg px-3 py-1.5 text-xs whitespace-nowrap"
-        >
-          <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
-          <span className="hidden xs:inline">Add Barber</span>
-          <span className="xs:hidden">Add</span>
-        </button>
-      </div>
-
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <p className="text-gray-500">Loading barbers...</p>

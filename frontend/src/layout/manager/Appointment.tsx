@@ -953,9 +953,9 @@ export function Appointment() {
 
   return (
     <div className="w-full bg-slate-100 p-4 sm:p-6 pb-12 sm:pb-10 font-sans">
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+      <div className="relative mb-6 sm:flex sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          <h1 className="pr-44 text-2xl font-bold text-gray-900 sm:pr-0 sm:text-3xl">
             Schedules
           </h1>
           <p className="text-gray-500 mt-1">
@@ -965,7 +965,7 @@ export function Appointment() {
         <Button
           type="button"
           onClick={() => setAssistedBookingOpen(true)}
-          className="w-full gap-2 bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
+          className="absolute right-0 top-0 w-auto shrink-0 gap-2 bg-blue-600 text-white hover:bg-blue-700 sm:static"
         >
           <CalendarPlus className="size-4" />
           Assisted Booking

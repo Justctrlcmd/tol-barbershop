@@ -183,6 +183,7 @@ export interface BookingSettings {
   opening_time: string;
   closing_time: string;
   custom_open_time: string;
+  custom_open_times: string[];
   booking_days_ahead: number;
   slot_interval_minutes: number;
   max_slots_per_booking: number;
