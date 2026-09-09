@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import type { NextConfig } from "next";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
@@ -6,6 +9,13 @@ const publicApiOrigin = isDevelopment
   : "";
 
 const cloudinaryCloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+const buildVersion = (() => {
+  try {
+    return readFileSync(resolve(process.cwd(), ".build-version"), "utf8").trim();
+  } catch {
+    return "development";
+  }
+})();
 const allowedDevOrigins = isDevelopment
   ? [
       ...new Set(
@@ -72,11 +82,34 @@ const securityHeaders = [
     : []),
 ];
 
+const applicationPageSources = [
+  "/",
+  "/booking",
+  "/feedback",
+  "/login",
+  "/forgot-password",
+  "/privacy-policy",
+  "/terms-of-use",
+  "/admin/:path*",
+  "/manager/:path*",
+];
+
+const applicationPageCacheHeaders = [
+  {
+    key: "Cache-Control",
+    value: "no-cache, max-age=0, must-revalidate",
+  },
+  { key: "Pragma", value: "no-cache" },
+  { key: "Expires", value: "0" },
+];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  generateBuildId: async () => buildVersion,
   env: {
     NEXT_PUBLIC_API_ORIGIN: publicApiOrigin,
     NEXT_PUBLIC_API_URL: "/api/v1",
+    NEXT_PUBLIC_BUILD_VERSION: buildVersion,
   },
   allowedDevOrigins,
   images: {
@@ -117,6 +150,10 @@ const nextConfig: NextConfig = {
           { key: "Service-Worker-Allowed", value: "/" },
         ],
       },
+      ...applicationPageSources.map((source) => ({
+        source,
+        headers: applicationPageCacheHeaders,
+      })),
     ];
   },
 };

@@ -35,6 +35,8 @@ npm run build
 npm run start
 ```
 
+`npm run build` automatically runs `frontend/scripts/generate-build-version.mjs` first. It writes an ignored `.build-version` file containing a UTC timestamp and the current short Git commit when Git is available, for example `20260909-173000123-a82f12c`. Next.js uses that value as its build ID and embeds the same non-secret value in the browser bundle. Do not create or increment a version manually.
+
 Use these public frontend values in production:
 
 ```dotenv
@@ -51,6 +53,74 @@ For local development only, set `NEXT_PUBLIC_API_ORIGIN=http://localhost:8000` w
 ## Nginx Routing
 
 Configure Nginx so `/api/v1/*` and `/sanctum/*` execute Laravel's `backend/public/index.php`, `/storage/*` maps to Laravel public storage, and every other route proxies to the Next.js process. Do not proxy API or Sanctum requests through Next.js and do not configure a separate public API hostname.
+
+`GET /version` is a Next.js route, not a Laravel API route. The application returns `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` for this endpoint. Normally no extra Nginx location is needed because the existing frontend catch-all proxies it to `127.0.0.1:3002`.
+
+If Nginx proxy caching or a global long-lived `Cache-Control` override is enabled, exclude `/version` explicitly inside the existing HTTPS server block:
+
+```nginx
+location = /version {
+    proxy_pass http://127.0.0.1:3002/version;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+    add_header Pragma "no-cache" always;
+    add_header Expires "0" always;
+}
+```
+
+Do not apply year-long caching or `s-maxage=31536000` to HTML/app-shell responses. The frontend sends `no-cache, max-age=0, must-revalidate` for application pages so browsers may store them only with revalidation. Preserve Next.js caching for `/_next/static/*`; hashed static assets remain `public, max-age=31536000, immutable`.
+
+## Frontend Deployment Refresh
+
+The root-mounted deployment checker compares the version embedded in the loaded browser bundle with `GET /version`:
+
+- once shortly after load;
+- whenever the tab becomes visible;
+- whenever the window regains focus;
+- every five minutes while the page remains open.
+
+Concurrent triggers share one in-flight request. Requests time out after five seconds, use `cache: no-store`, and silently ignore offline, failed, or malformed responses.
+
+When a newer version is detected, a safe page reload occurs. The public booking form registers a refresh guard while schedule details, changed form input, confirmation, OTP, booking submission, or the final booking reference is active. During guarded work, the app shows a persistent, non-blocking `New version available` toast with an `Update now` action instead of destroying user input. Leaving or completing the protected flow releases the guard and permits the pending update.
+
+The checker records the attempted target version in per-tab session storage before automatically reloading. If stale HTML is unexpectedly returned again, it will not enter a reload loop; the user retains the explicit update action. A successful matching load clears the marker.
+
+The existing service worker is used only for push notifications. It has no `fetch` handler and does not use Cache Storage, so it cannot serve an old app shell or old frontend assets.
+
+To troubleshoot a stale device, check the live version and cache headers:
+
+```bash
+curl -sS -D - https://tolbarbershop.com/version
+curl -sS -D - -o /dev/null https://tolbarbershop.com/
+```
+
+Confirm `/version` contains the same value as `frontend/.build-version` on the server and has `no-store`. Confirm HTML has `no-cache, max-age=0, must-revalidate`. If production still returns `s-maxage=31536000` for HTML, remove that Nginx or upstream override while retaining immutable caching for `/_next/static/*`.
+
+## Full Production Deployment
+
+Run the normal deployment sequence from the repository root. Build-version generation is included in `npm run build`:
+
+```bash
+cd /var/www/tol-barbershop
+git pull --ff-only origin main
+
+cd backend
+composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+php artisan migrate --force
+php artisan config:clear
+php artisan optimize
+sudo systemctl reload php8.4-fpm
+sudo systemctl restart tol-queue
+
+cd ../frontend
+npm ci
+rm -rf .next
+npm run build
+sudo systemctl restart tol-frontend
+```
+
+After the restart, compare `cat .build-version` with the JSON returned by `curl -sS https://tolbarbershop.com/version`.
 
 ## Laravel Environment
 

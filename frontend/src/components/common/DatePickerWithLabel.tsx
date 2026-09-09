@@ -49,7 +49,7 @@ export function DatePickerWithLabel({
   onDateChange,
   disablePastDates = false,
   maxDaysAhead,
-  disableSundays = true,
+  disableSundays = false,
   disabled = false,
   barberId,
   closedDates: providedClosedDates,

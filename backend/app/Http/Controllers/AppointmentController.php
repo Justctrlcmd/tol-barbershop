@@ -783,6 +783,8 @@ class AppointmentController extends Controller
                 $barberClosedDateMap[$dateKey] ?? [],
             ));
             $dateSlots = $this->dashboardSlotsForDate($dateKey, $availableBarberIds);
+            $isRecurringClosed = ! $this->scheduleService->isRecurringOpenDate($date)
+                && $dateSlots === [];
             $isClosed = isset($shopClosedDateMap[$dateKey])
                 || $availableBarberIds === []
                 || $dateSlots === [];
@@ -822,6 +824,7 @@ class AppointmentController extends Controller
                 'is_today' => $date->isSameDay($today),
                 'is_past' => $isPast,
                 'is_closed' => $isClosed,
+                'is_recurring_closed' => $isRecurringClosed,
                 'is_fully_booked' => ! $isClosed
                     && ! $isPast
                     && $totalSlots > 0
@@ -830,6 +833,7 @@ class AppointmentController extends Controller
         }
 
         $selectedDateKey = $selectedDate->toDateString();
+        $selectedSchedule = $this->scheduleService->forDate($selectedDate);
         $selectedAppointments = Appointment::with([
             'bookingCustomer:id,fullname,email,contact_number',
             'barber:id,fullname',
@@ -854,6 +858,8 @@ class AppointmentController extends Controller
             'selected_date' => $selectedDateKey,
             'week_start' => $weekStart->toDateString(),
             'week_end' => $weekEnd->toDateString(),
+            'opening_time' => substr((string) $selectedSchedule->opening_time, 0, 5),
+            'closing_time' => substr((string) $selectedSchedule->closing_time, 0, 5),
             'active_barbers' => count($activeBarberIds),
             'weekly_stats' => [
                 'completed_appointments' => (int) ($weeklyAppointmentStats?->completed_appointments ?? 0),

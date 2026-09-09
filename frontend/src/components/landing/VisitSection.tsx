@@ -2,11 +2,16 @@
 
 import Image from "next/image";
 import { Clock3, MapPin, Navigation, Scissors } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { SectionHeading } from "./SectionHeading";
 import { FadeIn } from "@/components/common/FadeIn";
+import { SectionHeading } from "@/components/landing/SectionHeading";
 import { getCloudinaryImageUrl, isCloudinaryImageUrl } from "@/lib/cloudinary";
+import {
+  DEFAULT_OPENING_HOURS,
+  getOpeningHoursRows,
+} from "@/lib/opening-hours";
+import { getPublicOpeningHours } from "@/services/public-booking.api";
 
 const VISIT_IMAGE_URL =
   getCloudinaryImageUrl(
@@ -17,6 +22,25 @@ const VISIT_IMAGE_FALLBACK = "/Outdoor.jpeg";
 
 export function VisitSection() {
   const [visitImageSrc, setVisitImageSrc] = useState(VISIT_IMAGE_URL);
+  const [openingHours, setOpeningHours] = useState(DEFAULT_OPENING_HOURS);
+  const openingHoursRows = useMemo(
+    () => getOpeningHoursRows(openingHours),
+    [openingHours],
+  );
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    void getPublicOpeningHours()
+      .then((settings) => {
+        if (isCurrent) setOpeningHours(settings);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   return (
     <section className="relative overflow-hidden border-t border-white/5 bg-primary px-4 py-16 sm:px-8 sm:py-20 lg:px-12 lg:py-24">
@@ -97,11 +121,13 @@ export function VisitSection() {
                 </span>
                 <div>
                   <h3 className="font-semibold text-white">Opening hours</h3>
-                  <p className="mt-2 text-sm leading-6 text-white/60">
-                    Monday - Saturday
-                    <br />
-                    9:00 AM - 7:00 PM
-                  </p>
+                  <div className="mt-2 space-y-1 text-sm leading-6 text-white/60">
+                    {openingHoursRows.map((row) => (
+                      <p key={`${row.days}-${row.hours}`}>
+                        {row.days}: {row.hours}
+                      </p>
+                    ))}
+                  </div>
                 </div>
               </div>
 

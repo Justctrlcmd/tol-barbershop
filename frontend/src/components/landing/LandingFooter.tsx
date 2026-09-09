@@ -5,84 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { Mail, MapPin } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import {
-  getPublicOpeningHours,
-  type PublicOpeningHours,
-} from "@/services/public-booking.api";
-
-const WEEKDAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
-
-const DEFAULT_OPENING_HOURS: PublicOpeningHours = {
-  open_day_from: 1,
-  open_day_to: 6,
-  closed_weekdays: [],
-  opening_time: "09:00",
-  closing_time: "19:00",
-};
-
-type OpeningHoursRow = {
-  days: string;
-  hours: string;
-};
-
-function formatTime(time: string): string {
-  const [hours, minutes] = time.split(":").map(Number);
-  const period = hours >= 12 ? "PM" : "AM";
-  const displayHours = hours % 12 || 12;
-
-  return `${displayHours}:${String(minutes).padStart(2, "0")} ${period}`;
-}
-
-function formatDayRange(start: number, end: number): string {
-  const firstDay = WEEKDAYS[start - 1];
-  const lastDay = WEEKDAYS[end - 1];
-
-  return start === end ? firstDay : `${firstDay} - ${lastDay}`;
-}
-
-function getOpeningHoursRows(settings: PublicOpeningHours): OpeningHoursRow[] {
-  const standardHours = `${formatTime(settings.opening_time)} - ${formatTime(settings.closing_time)}`;
-  const closedWeekdays = WEEKDAYS
-    .map((_, index) => index + 1)
-    .filter(
-      (weekday) =>
-        weekday < settings.open_day_from ||
-        weekday > settings.open_day_to ||
-        settings.closed_weekdays.includes(weekday),
-    );
-  const closedRanges = closedWeekdays.reduce<
-    Array<{ start: number; end: number }>
-  >((ranges, weekday) => {
-    const previous = ranges.at(-1);
-    if (previous && weekday === previous.end + 1) {
-      previous.end = weekday;
-    } else {
-      ranges.push({ start: weekday, end: weekday });
-    }
-
-    return ranges;
-  }, []);
-
-  return [
-    {
-      days: formatDayRange(settings.open_day_from, settings.open_day_to),
-      hours: standardHours,
-    },
-    ...closedRanges.map(({ start, end }) => ({
-      days: formatDayRange(start, end),
-      hours: "Closed",
-    })),
-  ];
-}
+  DEFAULT_OPENING_HOURS,
+  getOpeningHoursRows,
+} from "@/lib/opening-hours";
+import { cn } from "@/lib/utils";
+import { getPublicOpeningHours } from "@/services/public-booking.api";
 
 export function LandingFooter() {
   const [openingHours, setOpeningHours] = useState(DEFAULT_OPENING_HOURS);

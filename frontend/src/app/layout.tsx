@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";
-import { Toaster } from "@/components/ui/sonner";
 import { Poppins } from "next/font/google";
+import Script from "next/script";
+
+import { DeploymentVersionChecker } from "@/components/common/DeploymentVersionChecker";
+import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { RealtimeProvider } from "@/contexts/RealtimeContext";
 import { cn } from "@/lib/utils";
@@ -54,6 +56,7 @@ export default function RootLayout({
         />
         <AuthProvider>
           <RealtimeProvider>
+            <DeploymentVersionChecker />
             {children}
           </RealtimeProvider>
         </AuthProvider>

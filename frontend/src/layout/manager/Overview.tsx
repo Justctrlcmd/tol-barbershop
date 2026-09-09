@@ -131,10 +131,7 @@ function findNextSelectableDate(date: Date, closedDates: Set<string>): Date {
   let candidate = new Date(date);
   candidate.setHours(0, 0, 0, 0);
 
-  while (
-    candidate.getDay() === 0 ||
-    closedDates.has(formatDateToLocal(candidate))
-  ) {
+  while (closedDates.has(formatDateToLocal(candidate))) {
     candidate = addDays(candidate, 1);
   }
 
@@ -765,6 +762,29 @@ export function Overview() {
       setScheduleLoading(true);
       try {
         const nextSchedule = await getWeeklySchedule(selectedDate, signal);
+        const selectedDay = nextSchedule.days.find(
+          (day) => day.date === nextSchedule.selected_date,
+        );
+
+        if (selectedDay?.is_recurring_closed) {
+          const nextOpenDay = nextSchedule.days.find(
+            (day) =>
+              day.date > nextSchedule.selected_date &&
+              !day.is_recurring_closed,
+          );
+          const previousOpenDay = nextSchedule.days.findLast(
+            (day) =>
+              day.date < nextSchedule.selected_date &&
+              !day.is_recurring_closed,
+          );
+          const openDay = nextOpenDay ?? previousOpenDay;
+
+          if (openDay) {
+            setSelectedDate(parseISO(openDay.date));
+            return;
+          }
+        }
+
         setSchedule(nextSchedule);
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
@@ -796,6 +816,8 @@ export function Overview() {
 
     await loadSchedule(signal);
   });
+
+  useRealtimeEvent("booking_schedule", loadSchedule);
 
   const resolveDashboardAppointment = async (
     appointmentId: number,
@@ -1029,9 +1051,17 @@ export function Overview() {
   const weeklyStats = activeSchedule?.weekly_stats;
   const weeklyStatsLoading = scheduleLoading && !activeSchedule;
   const availabilityDays =
-    activeSchedule?.days.filter((day) => day.day !== "SUN") ?? [];
+    activeSchedule?.days.filter((day) => !day.is_recurring_closed) ?? [];
+  const recurringClosedDateSet = new Set(
+    activeSchedule?.days
+      .filter((day) => day.is_recurring_closed)
+      .map((day) => day.date) ?? [],
+  );
   const activeBarberCount = activeSchedule?.active_barbers ?? 0;
   const timeSlots = activeSchedule?.time_slots ?? [];
+  const operatingHours = activeSchedule
+    ? `${formatTime12(activeSchedule.opening_time)} - ${formatTime12(activeSchedule.closing_time)}`
+    : "configured operation hours";
 
   return (
     <div className="h-full w-full bg-slate-100 p-4 pb-12 font-sans sm:p-6 sm:pb-10">
@@ -1128,8 +1158,8 @@ export function Overview() {
                   onSelect={handleDateSelect}
                   defaultMonth={selectedDate}
                   disabled={(day) =>
-                    day.getDay() === 0 ||
-                    closedDateSet.has(formatDateToLocal(day))
+                    closedDateSet.has(formatDateToLocal(day)) ||
+                    recurringClosedDateSet.has(formatDateToLocal(day))
                   }
                   initialFocus
                 />
@@ -1169,7 +1199,12 @@ export function Overview() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-6 gap-1 sm:gap-2 lg:gap-3">
+          <div
+            className="grid gap-1 sm:gap-2 lg:gap-3"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(availabilityDays.length, 1)}, minmax(0, 1fr))`,
+            }}
+          >
             {availabilityDays.map((day) => (
               <WeeklyAvailabilityCard
                 key={day.date}
@@ -1189,7 +1224,7 @@ export function Overview() {
           <span>{formatDisplayDate(selectedDate)}</span>
         </h2>
         <p className="mb-4 text-xs text-gray-400 sm:text-sm">
-          View bookings and barber availability (9:00 AM - 7:00 PM)
+          View bookings and barber availability ({operatingHours})
         </p>
 
         {scheduleLoading && !activeSchedule ? (

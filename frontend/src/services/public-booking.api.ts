@@ -101,6 +101,7 @@ export type PublicBookingResult = {
 };
 
 const API = process.env.NEXT_PUBLIC_API_URL;
+let openingHoursRequest: Promise<PublicOpeningHours> | null = null;
 
 export async function getPublicBookingBootstrap(): Promise<PublicBookingBootstrap> {
   const response = await publicFetch(`${API}/public-booking/bootstrap`);
@@ -108,18 +109,26 @@ export async function getPublicBookingBootstrap(): Promise<PublicBookingBootstra
 }
 
 export async function getPublicOpeningHours(): Promise<PublicOpeningHours> {
-  const response = await publicFetch(`${API}/public-booking-settings`, {
-    cache: "no-store",
-  });
-  const settings = response.data as PublicBookingSettings;
+  const request = openingHoursRequest ??= publicFetch(
+    `${API}/public-booking-settings`,
+    { cache: "no-store" },
+  ).then((response) => {
+    const settings = response.data as PublicBookingSettings;
 
-  return {
-    open_day_from: settings.open_day_from,
-    open_day_to: settings.open_day_to,
-    closed_weekdays: settings.closed_weekdays,
-    opening_time: settings.opening_time,
-    closing_time: settings.closing_time,
-  };
+    return {
+      open_day_from: settings.open_day_from,
+      open_day_to: settings.open_day_to,
+      closed_weekdays: settings.closed_weekdays,
+      opening_time: settings.opening_time,
+      closing_time: settings.closing_time,
+    };
+  });
+
+  try {
+    return await request;
+  } finally {
+    if (openingHoursRequest === request) openingHoursRequest = null;
+  }
 }
 
 export async function getPublicUnavailableSlots(
