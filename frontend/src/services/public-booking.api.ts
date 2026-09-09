@@ -31,6 +31,15 @@ export type PublicBookingSettings = {
   open_slots: PublicOpenSlot[];
 };
 
+export type PublicOpeningHours = Pick<
+  PublicBookingSettings,
+  | "open_day_from"
+  | "open_day_to"
+  | "closed_weekdays"
+  | "opening_time"
+  | "closing_time"
+>;
+
 export type PublicOpenSlot = {
   date: string;
   time: string;
@@ -96,6 +105,21 @@ const API = process.env.NEXT_PUBLIC_API_URL;
 export async function getPublicBookingBootstrap(): Promise<PublicBookingBootstrap> {
   const response = await publicFetch(`${API}/public-booking/bootstrap`);
   return response.data;
+}
+
+export async function getPublicOpeningHours(): Promise<PublicOpeningHours> {
+  const response = await publicFetch(`${API}/public-booking-settings`, {
+    cache: "no-store",
+  });
+  const settings = response.data as PublicBookingSettings;
+
+  return {
+    open_day_from: settings.open_day_from,
+    open_day_to: settings.open_day_to,
+    closed_weekdays: settings.closed_weekdays,
+    opening_time: settings.opening_time,
+    closing_time: settings.closing_time,
+  };
 }
 
 export async function getPublicUnavailableSlots(

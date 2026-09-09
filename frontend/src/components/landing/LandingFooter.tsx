@@ -1,8 +1,110 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Mail, MapPin } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+import {
+  getPublicOpeningHours,
+  type PublicOpeningHours,
+} from "@/services/public-booking.api";
+
+const WEEKDAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+const DEFAULT_OPENING_HOURS: PublicOpeningHours = {
+  open_day_from: 1,
+  open_day_to: 6,
+  closed_weekdays: [],
+  opening_time: "09:00",
+  closing_time: "19:00",
+};
+
+type OpeningHoursRow = {
+  days: string;
+  hours: string;
+};
+
+function formatTime(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHours = hours % 12 || 12;
+
+  return `${displayHours}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
+function formatDayRange(start: number, end: number): string {
+  const firstDay = WEEKDAYS[start - 1];
+  const lastDay = WEEKDAYS[end - 1];
+
+  return start === end ? firstDay : `${firstDay} - ${lastDay}`;
+}
+
+function getOpeningHoursRows(settings: PublicOpeningHours): OpeningHoursRow[] {
+  const standardHours = `${formatTime(settings.opening_time)} - ${formatTime(settings.closing_time)}`;
+  const closedWeekdays = WEEKDAYS
+    .map((_, index) => index + 1)
+    .filter(
+      (weekday) =>
+        weekday < settings.open_day_from ||
+        weekday > settings.open_day_to ||
+        settings.closed_weekdays.includes(weekday),
+    );
+  const closedRanges = closedWeekdays.reduce<
+    Array<{ start: number; end: number }>
+  >((ranges, weekday) => {
+    const previous = ranges.at(-1);
+    if (previous && weekday === previous.end + 1) {
+      previous.end = weekday;
+    } else {
+      ranges.push({ start: weekday, end: weekday });
+    }
+
+    return ranges;
+  }, []);
+
+  return [
+    {
+      days: formatDayRange(settings.open_day_from, settings.open_day_to),
+      hours: standardHours,
+    },
+    ...closedRanges.map(({ start, end }) => ({
+      days: formatDayRange(start, end),
+      hours: "Closed",
+    })),
+  ];
+}
+
 export function LandingFooter() {
+  const [openingHours, setOpeningHours] = useState(DEFAULT_OPENING_HOURS);
+  const openingHoursRows = useMemo(
+    () => getOpeningHoursRows(openingHours),
+    [openingHours],
+  );
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    void getPublicOpeningHours()
+      .then((settings) => {
+        if (isCurrent) setOpeningHours(settings);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
   return (
     <footer
       id="contact"
@@ -96,15 +198,18 @@ export function LandingFooter() {
         <div className="flex flex-col">
           <p className="text-xl font-semibold mb-5">Opening Hours</p>
 
-          <div className="flex  pb-4 justify-between items-center">
-            <p className="text-sm">Monday - Saturday </p>
-            <p className="text-sm">9:00 AM - 7:00 PM</p>
-          </div>
-
-          <div className="flex border-t border-white/10 pb-4 justify-between items-center">
-            <p className="text-sm pt-4">Sunday</p>
-            <p className="text-sm pt-4">Closed</p>
-          </div>
+          {openingHoursRows.map((row, index) => (
+            <div
+              key={`${row.days}-${row.hours}`}
+              className={cn(
+                "flex justify-between gap-4 pb-4",
+                index > 0 && "border-t border-white/10 pt-4",
+              )}
+            >
+              <p className="text-sm">{row.days}</p>
+              <p className="text-right text-sm">{row.hours}</p>
+            </div>
+          ))}
         </div>
       </div>
 
