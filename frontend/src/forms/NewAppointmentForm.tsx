@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useRateLimit } from "@/hooks/useRateLimit";
+import { useDeploymentRefreshGuard } from "@/hooks/useDeploymentRefreshGuard";
 import {
   normalizeEmail,
   normalizePhone,
@@ -154,6 +155,21 @@ export function NewAppointmentForm() {
   const [now, setNow] = useState(Date.now());
   const [pendingPayload, setPendingPayload] = useState<PublicBookingPayload | null>(null);
   const [result, setResult] = useState<PublicBookingResult | null>(null);
+  const [hasUnsavedFormInput, setHasUnsavedFormInput] = useState(false);
+
+  useDeploymentRefreshGuard(
+    hasUnsavedFormInput ||
+      mode === "group" ||
+      Boolean(selectedBarber) ||
+      Boolean(selectedService) ||
+      Boolean(selectedDate) ||
+      Boolean(selectedTime) ||
+      confirmationOpen ||
+      otpOpen ||
+      loading ||
+      pendingPayload !== null ||
+      result !== null,
+  );
 
   const rateLimit = useRateLimit({
     maxAttempts: 15,
@@ -370,6 +386,7 @@ export function NewAppointmentForm() {
     setPendingPayload(null);
     setRequestToken("");
     setOtp("");
+    setHasUnsavedFormInput(false);
   }
 
   return (
@@ -395,7 +412,13 @@ export function NewAppointmentForm() {
           <h1 className="pr-28 text-3xl font-bold text-gray-900 sm:pr-44 sm:text-4xl">Schedule Your Haircut</h1>
           <p className="mt-2 text-gray-500">Choose your schedule, review the total, and verify your email to submit the request.</p>
         </div>
-        <form id="appointment-booking-form" onSubmit={handleSubmit} className="space-y-8">
+        <form
+          id="appointment-booking-form"
+          onSubmit={handleSubmit}
+          onInputCapture={() => setHasUnsavedFormInput(true)}
+          onChangeCapture={() => setHasUnsavedFormInput(true)}
+          className="space-y-8"
+        >
           <section>
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               {mode === "group" && settings && (
@@ -488,7 +511,7 @@ export function NewAppointmentForm() {
       <Dialog open={otpOpen} onOpenChange={(open) => !loading && setOtpOpen(open)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Mail className="size-5 text-primary" />Verify Your Email</DialogTitle><DialogDescription>Enter the six-digit code sent to {email.toLowerCase()}. The slot will be checked again after verification.</DialogDescription></DialogHeader>
-          <InputWithLabel id="booking-otp" label="Verification Code" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} className="text-center text-xl tracking-[0.4em]" />
+          <InputWithLabel id="booking-otp" label="Verification Code" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={(event) => { setHasUnsavedFormInput(true); setOtp(event.target.value.replace(/\D/g, "").slice(0, 6)); }} maxLength={6} className="text-center text-xl tracking-[0.4em]" />
           <p className="text-center text-sm text-muted-foreground">
             Having trouble with your code?{" "}
             <a

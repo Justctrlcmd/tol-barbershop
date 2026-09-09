@@ -2,6 +2,7 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": ">=24 <25",
     "npm": ">=11"
@@ -12,9 +13,11 @@
   },
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/generate-build-version.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:deployment": "node --test src/lib/deployment-version.test.mts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

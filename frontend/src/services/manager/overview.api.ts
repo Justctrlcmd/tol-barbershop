@@ -53,6 +53,7 @@ export type WeeklyAvailabilityDay = {
   is_today: boolean;
   is_past: boolean;
   is_closed: boolean;
+  is_recurring_closed: boolean;
   is_fully_booked: boolean;
 };
 
@@ -67,6 +68,8 @@ export type WeeklySchedule = {
   selected_date: string;
   week_start: string;
   week_end: string;
+  opening_time: string;
+  closing_time: string;
   active_barbers: number;
   weekly_stats: WeeklyDashboardStats;
   days: WeeklyAvailabilityDay[];

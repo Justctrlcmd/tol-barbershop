@@ -3,7 +3,9 @@
 use App\Models\Appointment;
 use App\Models\AppointmentFeedback;
 use App\Models\BookingCustomer;
+use App\Models\BookingSchedule;
 use App\Models\ClosedDates;
+use App\Models\ScheduleOpenSlot;
 use App\Models\Service;
 use App\Models\User;
 use Carbon\Carbon;
@@ -33,6 +35,8 @@ test('weekly schedule returns monday through sunday barber capacity', function (
 
     expect($response->json('week_start'))->toBe('2026-07-20')
         ->and($response->json('week_end'))->toBe('2026-07-26')
+        ->and($response->json('opening_time'))->toBe('09:00')
+        ->and($response->json('closing_time'))->toBe('19:00')
         ->and($response->json('active_barbers'))->toBe(2)
         ->and($response->json('days'))->toHaveCount(7)
         ->and($response->json('days.0.day'))->toBe('MON')
@@ -43,6 +47,48 @@ test('weekly schedule returns monday through sunday barber capacity', function (
         ->and($response->json('days.6.total_slots'))->toBe(0)
         ->and($response->json('weekly_stats.completed_appointments'))->toBe(0)
         ->and($response->json('weekly_stats.average_rating'))->toBe(0);
+});
+
+test('weekly schedule identifies configured recurring closed days instead of assuming sunday', function () {
+    $manager = User::factory()->create(['role' => 'manager']);
+    User::factory()->create(['role' => 'barber', 'is_active' => true]);
+    BookingSchedule::query()->firstOrFail()->update([
+        'closed_weekday' => 3,
+        'closed_weekdays' => [3],
+    ]);
+    Sanctum::actingAs($manager);
+
+    $response = $this->getJson(
+        '/api/v1/appointments/overview/weekly-schedule?date=2026-07-20',
+    )->assertOk();
+
+    expect($response->json('days.2.day'))->toBe('WED')
+        ->and($response->json('days.2.is_recurring_closed'))->toBeTrue()
+        ->and($response->json('days.6.day'))->toBe('SUN')
+        ->and($response->json('days.6.is_recurring_closed'))->toBeFalse()
+        ->and($response->json('days.6.is_closed'))->toBeFalse();
+});
+
+test('weekly schedule includes a date-specific open slot on a recurring closed day', function () {
+    $manager = User::factory()->create(['role' => 'manager']);
+    $barber = User::factory()->create(['role' => 'barber', 'is_active' => true]);
+    ScheduleOpenSlot::create([
+        'slot_date' => '2026-07-26',
+        'slot_time' => '20:30',
+        'barber_user_id' => $barber->id,
+        'created_by_user_id' => $manager->id,
+    ]);
+    Sanctum::actingAs($manager);
+
+    $response = $this->getJson(
+        '/api/v1/appointments/overview/weekly-schedule?date=2026-07-26',
+    )->assertOk();
+
+    expect($response->json('days.6.is_recurring_closed'))->toBeFalse()
+        ->and($response->json('days.6.is_closed'))->toBeFalse()
+        ->and($response->json('days.6.available_slots'))->toBe(1)
+        ->and($response->json('time_slots'))->toHaveCount(1)
+        ->and($response->json('time_slots.0.time'))->toBe('8:30 PM');
 });
 
 test('weekly schedule accounts for duration overlaps and closed dates', function () {
