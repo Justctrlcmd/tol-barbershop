@@ -26,9 +26,19 @@ export function isTimeSlotUnavailable(
   appointmentTime: string,
   durationMinutes: number,
   occupiedSlots: OccupiedTimeSlot[],
+  explicitOpenSlotTimes: string[] = [],
 ): boolean {
   const start = timeToMinutes(appointmentTime);
   if (start === null) return true;
+
+  const isExplicitOpenSlot = explicitOpenSlotTimes.some(
+    (time) => timeToMinutes(time) === start,
+  );
+  const hasBookingAtSameStartTime = occupiedSlots.some(
+    (slot) => timeToMinutes(slot.appointment_time) === start,
+  );
+
+  if (isExplicitOpenSlot && !hasBookingAtSameStartTime) return false;
 
   const end = start + Math.max(1, durationMinutes);
 

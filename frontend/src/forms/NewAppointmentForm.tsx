@@ -117,9 +117,15 @@ function unavailableForService(
   serviceId: string,
   services: PublicService[],
   occupiedSlots: OccupiedPublicSlot[],
+  explicitOpenSlotTimes: string[],
 ): boolean {
   const service = services.find((item) => String(item.id) === serviceId);
-  return isTimeSlotUnavailable(time, Number(service?.duration ?? 60), occupiedSlots);
+  return isTimeSlotUnavailable(
+    time,
+    Number(service?.duration ?? 60),
+    occupiedSlots,
+    explicitOpenSlotTimes,
+  );
 }
 
 export function NewAppointmentForm() {
@@ -144,6 +150,7 @@ export function NewAppointmentForm() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [occupiedSlots, setOccupiedSlots] = useState<OccupiedPublicSlot[]>([]);
+  const [explicitOpenSlotTimes, setExplicitOpenSlotTimes] = useState<string[]>([]);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -208,6 +215,7 @@ export function NewAppointmentForm() {
   useEffect(() => {
     if (!selectedBarber || !selectedDate) {
       setOccupiedSlots([]);
+      setExplicitOpenSlotTimes([]);
       setAvailableTimes([]);
       return;
     }
@@ -216,10 +224,12 @@ export function NewAppointmentForm() {
     void getPublicUnavailableSlots(Number(selectedBarber), toApiDate(selectedDate))
       .then((availability) => {
         setOccupiedSlots(availability.occupied_slots);
+        setExplicitOpenSlotTimes(availability.open_slot_times);
         setAvailableTimes(availability.time_slots);
       })
       .catch(() => {
         setOccupiedSlots([]);
+        setExplicitOpenSlotTimes([]);
         setAvailableTimes([]);
         toast.error("Failed to check availability.");
       })
@@ -432,7 +442,7 @@ export function NewAppointmentForm() {
                 <>
                   <SelectWithLabel id="service" label="Service" placeholder="Select a service" options={services.map((service) => ({ value: String(service.id), label: service.name }))} value={selectedService} onValueChange={setSelectedService} />
                   <DatePickerWithLabel id="date" label="Date" placeholder="Pick a date" disablePastDates maxDaysAhead={settings?.booking_days_ahead} disableSundays={false} date={selectedDate} onDateChange={setSelectedDate} disabled={!selectedBarber} closedDates={unavailableDates} isDateDisabled={isDateDisabled} />
-                  <SelectWithLabel id="time" label="Time" placeholder="Select time" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, selectedService, services, occupiedSlots) || isPastTime(time.value, selectedDate) }))} value={selectedTime} onValueChange={setSelectedTime} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
+                  <SelectWithLabel id="time" label="Time" placeholder="Select time" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, selectedService, services, occupiedSlots, explicitOpenSlotTimes) || isPastTime(time.value, selectedDate) }))} value={selectedTime} onValueChange={setSelectedTime} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
                 </>
               ) : (
                 <>
@@ -453,7 +463,7 @@ export function NewAppointmentForm() {
                           });
                         }} placeholder="Full name" maxLength={255} className="h-10 border-gray-200 bg-white text-gray-900" />
                         <SelectWithLabel id={`slot-service-${index}`} label="Service" placeholder="Select" options={services.map((service) => ({ value: String(service.id), label: service.name }))} value={slotServices[index] ?? ""} onValueChange={(value) => setSlotServices((current) => { const next = [...current]; next[index] = value; return next; })} disabled={!selectedBarber || !selectedDate} />
-                        <SelectWithLabel id={`slot-time-${index}`} label="Time" placeholder="Select" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, slotServices[index], services, occupiedSlots) || isPastTime(time.value, selectedDate) }))} value={slotTimes[index] ?? ""} onValueChange={(value) => setSlotTimes((current) => { const next = [...current]; next[index] = value; return next; })} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
+                        <SelectWithLabel id={`slot-time-${index}`} label="Time" placeholder="Select" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, slotServices[index], services, occupiedSlots, explicitOpenSlotTimes) || isPastTime(time.value, selectedDate) }))} value={slotTimes[index] ?? ""} onValueChange={(value) => setSlotTimes((current) => { const next = [...current]; next[index] = value; return next; })} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
                       </div>
                     ))}
                   </div>

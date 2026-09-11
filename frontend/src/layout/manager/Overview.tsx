@@ -653,12 +653,7 @@ function TimeSlotCard({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-gray-900">{slot.time}</p>
-          <p
-            className={cn(
-              "truncate text-xs text-gray-400",
-              slot.is_fully_booked && "text-red-600",
-            )}
-          >
+          <p className="truncate text-xs text-gray-400">
             <span className="lg:hidden">{compactAvailabilityLabel}</span>
             <span className="hidden lg:inline">{availabilityLabel}</span>
           </p>
@@ -688,12 +683,7 @@ function TimeSlotCard({
             <p className="shrink-0 text-sm font-semibold text-gray-900">
               {slot.time}
             </p>
-            <p
-              className={cn(
-                "truncate text-xs text-gray-500",
-                slot.is_fully_booked && "font-medium text-red-600",
-              )}
-            >
+            <p className="truncate text-xs text-gray-500">
               <span className="lg:hidden">{compactAvailabilityLabel}</span>
               <span className="hidden lg:inline">{availabilityLabel}</span>
             </p>
@@ -719,12 +709,7 @@ function TimeSlotCard({
           <p className="truncate text-xs font-medium text-purple-600">
             {count} bookings
           </p>
-          <p
-            className={cn(
-              "truncate text-[11px] text-gray-500",
-              slot.is_fully_booked && "font-medium text-red-600",
-            )}
-          >
+          <p className="truncate text-[11px] text-gray-500">
             <span className="lg:hidden">{compactAvailabilityLabel}</span>
             <span className="hidden lg:inline">{availabilityLabel}</span>
           </p>
@@ -1062,6 +1047,7 @@ export function Overview() {
   const operatingHours = activeSchedule
     ? `${formatTime12(activeSchedule.opening_time)} - ${formatTime12(activeSchedule.closing_time)}`
     : "configured operation hours";
+  const timeSlotGridClass = "grid grid-cols-1 gap-3 lg:grid-flow-col lg:grid-cols-3 lg:grid-rows-4";
 
   return (
     <div className="h-full w-full bg-slate-100 p-4 pb-12 font-sans sm:p-6 sm:pb-10">
@@ -1228,7 +1214,7 @@ export function Overview() {
         </p>
 
         {scheduleLoading && !activeSchedule ? (
-          <div className="grid grid-flow-col grid-cols-2 grid-rows-6 gap-3 lg:grid-cols-3 lg:grid-rows-4">
+          <div className={timeSlotGridClass}>
             {Array.from({ length: 11 }, (_, index) => (
               <div
                 key={index}
@@ -1242,7 +1228,7 @@ export function Overview() {
             <p className="text-sm">No time slots for this date.</p>
           </div>
         ) : (
-          <div className="grid grid-flow-col grid-cols-2 grid-rows-6 gap-3 lg:grid-cols-3 lg:grid-rows-4">
+          <div className={timeSlotGridClass}>
             {timeSlots.map((slot) => (
               <TimeSlotCard
                 key={slot.time}

@@ -513,7 +513,9 @@ function toDateBarberGroups(appointments: Appointment[]): DateBarberGroup[] {
         .map(([barberName, barberAppts]) => ({
           barberName,
           appointments: [...barberAppts].sort((a, b) =>
-            a.appointment_time.localeCompare(b.appointment_time),
+            normalizeToHHmm(a.appointment_time).localeCompare(
+              normalizeToHHmm(b.appointment_time),
+            ) || a.id - b.id,
           ),
         }))
         .sort((a, b) => a.barberName.localeCompare(b.barberName));
@@ -521,6 +523,40 @@ function toDateBarberGroups(appointments: Appointment[]): DateBarberGroup[] {
       return { label: formatDateLabel(sortKey), sortKey, barberGroups };
     })
     .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+}
+
+function paginateDateBarberGroups(
+  groups: DateBarberGroup[],
+  maxBookingsPerPage: number,
+): DateBarberGroup[][] {
+  const pages: DateBarberGroup[][] = [];
+  let currentPage: DateBarberGroup[] = [];
+  let currentBookingCount = 0;
+
+  for (const group of groups) {
+    const groupBookingCount = group.barberGroups.reduce(
+      (count, barberGroup) => count + barberGroup.appointments.length,
+      0,
+    );
+
+    if (
+      currentPage.length > 0
+      && currentBookingCount + groupBookingCount > maxBookingsPerPage
+    ) {
+      pages.push(currentPage);
+      currentPage = [];
+      currentBookingCount = 0;
+    }
+
+    currentPage.push(group);
+    currentBookingCount += groupBookingCount;
+  }
+
+  if (currentPage.length > 0) {
+    pages.push(currentPage);
+  }
+
+  return pages;
 }
 
 export function Appointment() {
@@ -648,7 +684,14 @@ export function Appointment() {
   const [today] = useState(getTodayDate);
 
   const upcomingConfirmed = useMemo(
-    () => filteredConfirmedAppointments.filter((a) => a.appointment_date >= today),
+    () => filteredConfirmedAppointments
+      .filter((a) => a.appointment_date >= today)
+      .sort((a, b) => (
+        a.appointment_date.localeCompare(b.appointment_date)
+        || normalizeToHHmm(a.appointment_time).localeCompare(normalizeToHHmm(b.appointment_time))
+        || (a.barber.fullname ?? "").localeCompare(b.barber.fullname ?? "")
+        || a.id - b.id
+      )),
     [filteredConfirmedAppointments, today],
   );
 
@@ -662,13 +705,23 @@ export function Appointment() {
     [pastDueConfirmed],
   );
 
-  const confirmedTotalPages = Math.max(1, Math.ceil(upcomingConfirmed.length / confirmedPageSize));
+  const upcomingConfirmedGroups = useMemo(
+    () => toDateBarberGroups(upcomingConfirmed),
+    [upcomingConfirmed],
+  );
 
-  const paginatedConfirmedGroups = useMemo(() => {
-    const start = (confirmedPage - 1) * confirmedPageSize;
-    const paginated = upcomingConfirmed.slice(start, start + confirmedPageSize);
-    return toDateBarberGroups(paginated);
-  }, [upcomingConfirmed, confirmedPage]);
+  const confirmedPages = useMemo(
+    () => paginateDateBarberGroups(upcomingConfirmedGroups, confirmedPageSize),
+    [upcomingConfirmedGroups],
+  );
+
+  const confirmedTotalPages = Math.max(1, confirmedPages.length);
+
+  const paginatedConfirmedGroups = confirmedPages[confirmedPage - 1] ?? [];
+
+  useEffect(() => {
+    setConfirmedPage((currentPage) => Math.min(currentPage, confirmedTotalPages));
+  }, [confirmedTotalPages]);
 
   const runUpdate = async (
     appt: Appointment,
@@ -1128,7 +1181,7 @@ export function Appointment() {
                       ))}
                     </div>
 
-                    {upcomingConfirmed.length > confirmedPageSize ? (
+                    {confirmedTotalPages > 1 ? (
                       <Pagination className="mt-4 overflow-hidden px-1">
                         <PaginationContent className="flex-nowrap gap-0.5">
                           <PaginationItem>

@@ -118,17 +118,31 @@ class BookingScheduleService
         $times = $this->isRecurringOpenDate($date, $schedule)
             ? $this->standardStartTimes($schedule)
             : [];
-        $customTimes = ScheduleOpenSlot::query()
-            ->whereDate('slot_date', $date->toDateString())
-            ->where('barber_user_id', $barberUserId)
-            ->pluck('slot_time')
-            ->map(fn ($time): string => substr((string) $time, 0, 5))
-            ->all();
+        $customTimes = $this->openSlotTimesFor($date, $barberUserId);
 
         return collect([...$times, ...$customTimes])
             ->unique()
             ->sortBy(fn (string $time): int => $this->timeToMinutes($time))
             ->values()
+            ->all();
+    }
+
+    public function openSlotTimesFor(
+        string|CarbonInterface $date,
+        int $barberUserId,
+        bool $lock = false,
+    ): array {
+        $query = ScheduleOpenSlot::query()
+            ->whereDate('slot_date', $this->date($date)->toDateString())
+            ->where('barber_user_id', $barberUserId);
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query
+            ->pluck('slot_time')
+            ->map(fn ($time): string => $this->normalizeTime((string) $time))
             ->all();
     }
 

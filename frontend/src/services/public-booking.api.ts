@@ -85,6 +85,7 @@ export type OccupiedPublicSlot = {
 export type PublicAvailability = {
   occupied_slots: OccupiedPublicSlot[];
   time_slots: string[];
+  open_slot_times: string[];
 };
 
 export type BookingOtpResponse = {
@@ -145,6 +146,7 @@ export async function getPublicUnavailableSlots(
   return {
     occupied_slots: response.data,
     time_slots: response.time_slots,
+    open_slot_times: response.open_slot_times,
   };
 }
 

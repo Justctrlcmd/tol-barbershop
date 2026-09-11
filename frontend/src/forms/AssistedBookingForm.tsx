@@ -80,6 +80,7 @@ export function AssistedBookingForm({
   const [occupiedSlots, setOccupiedSlots] = useState<OccupiedAppointmentSlot[]>(
     [],
   );
+  const [explicitOpenSlotTimes, setExplicitOpenSlotTimes] = useState<string[]>([]);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const rateLimit = useRateLimit({
@@ -143,11 +144,13 @@ export function AssistedBookingForm({
       .then((availability) => {
         if (!active) return;
         setOccupiedSlots(availability.occupied_slots);
+        setExplicitOpenSlotTimes(availability.open_slot_times);
         setAvailableTimes(availability.time_slots);
       })
       .catch(() => {
         if (!active) return;
         setOccupiedSlots([]);
+        setExplicitOpenSlotTimes([]);
         setAvailableTimes([]);
         toast.error("Failed to check available times.");
       })
@@ -174,10 +177,11 @@ export function AssistedBookingForm({
             time,
             Number(selectedService.duration ?? 60),
             occupiedSlots,
+            explicitOpenSlotTimes,
           ) ||
           isPastTime(time, selectedDate),
       })),
-    [availableTimes, occupiedSlots, selectedDate, selectedService],
+    [availableTimes, explicitOpenSlotTimes, occupiedSlots, selectedDate, selectedService],
   );
 
   const isDateDisabled = (day: Date): boolean => {
@@ -201,6 +205,7 @@ export function AssistedBookingForm({
     reset();
     setSelectedDate(undefined);
     setOccupiedSlots([]);
+    setExplicitOpenSlotTimes([]);
     setAvailableTimes([]);
     setCheckingAvailability(false);
     onOpenChange(false);
@@ -229,6 +234,7 @@ export function AssistedBookingForm({
       reset();
       setSelectedDate(undefined);
       setOccupiedSlots([]);
+      setExplicitOpenSlotTimes([]);
       setAvailableTimes([]);
       setCheckingAvailability(false);
       onOpenChange(false);

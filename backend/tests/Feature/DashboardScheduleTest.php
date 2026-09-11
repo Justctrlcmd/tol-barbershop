@@ -137,6 +137,50 @@ test('weekly schedule accounts for duration overlaps and closed dates', function
         );
 });
 
+test('weekly schedule keeps an explicit open slot available over a standard booking interval', function () {
+    $manager = User::factory()->create(['role' => 'manager']);
+    $customer = BookingCustomer::create([
+        'fullname' => 'Open Slot Dashboard Customer',
+        'email' => 'open-slot-dashboard@example.test',
+        'contact_number' => '09170000003',
+    ]);
+    $barber = User::factory()->create(['role' => 'barber', 'is_active' => true]);
+    $service = Service::create([
+        'name' => 'Open Slot Dashboard Service',
+        'description' => 'Service used for explicit dashboard availability',
+        'duration' => 60,
+        'price' => 300,
+        'is_active' => true,
+    ]);
+    Appointment::create([
+        'booking_customer_id' => $customer->id,
+        'service_id' => $service->id,
+        'barber_user_id' => $barber->id,
+        'appointment_date' => '2026-07-21',
+        'appointment_time' => '10:00',
+        'duration_minutes' => 60,
+        'price' => 300,
+        'status' => 'confirmed',
+        'active_slot_key' => "{$barber->id}|2026-07-21|10:00",
+    ]);
+    ScheduleOpenSlot::create([
+        'slot_date' => '2026-07-21',
+        'slot_time' => '10:30',
+        'barber_user_id' => $barber->id,
+        'created_by_user_id' => $manager->id,
+    ]);
+    Sanctum::actingAs($manager);
+
+    $response = $this->getJson(
+        '/api/v1/appointments/overview/weekly-schedule?date=2026-07-21',
+    )->assertOk();
+    $openSlot = collect($response->json('time_slots'))->firstWhere('time', '10:30 AM');
+
+    expect($openSlot)->not->toBeNull()
+        ->and($openSlot['available_barbers'])->toBe(1)
+        ->and($openSlot['is_fully_booked'])->toBeFalse();
+});
+
 test('weekly schedule marks an open day with no remaining barber capacity as fully booked', function () {
     $manager = User::factory()->create(['role' => 'manager']);
     $customer = BookingCustomer::create(['fullname' => 'Capacity Customer', 'email' => 'dashboard-capacity@example.test', 'contact_number' => '09170000001']);

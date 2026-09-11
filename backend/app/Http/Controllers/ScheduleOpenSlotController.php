@@ -102,28 +102,6 @@ class ScheduleOpenSlotController extends Controller
                     ]);
                 }
 
-                $slotStart = $this->scheduleService->timeToMinutes($slotTime);
-                $slotEnd = $slotStart + BookingScheduleService::SLOT_INTERVAL_MINUTES;
-                $appointments = Appointment::query()
-                    ->with('service:id,duration')
-                    ->whereDate('appointment_date', $validated['slot_date'])
-                    ->whereIn('barber_user_id', $barberIds)
-                    ->whereIn('status', AppointmentBookingService::ACTIVE_STATUSES)
-                    ->orderBy('id')
-                    ->lockForUpdate()
-                    ->get();
-
-                foreach ($appointments as $appointment) {
-                    $start = $this->scheduleService->timeToMinutes((string) $appointment->appointment_time);
-                    $duration = max(1, (int) ($appointment->duration_minutes ?? $appointment->service?->duration ?? 60));
-
-                    if ($slotStart < $start + $duration && $slotEnd > $start) {
-                        throw ValidationException::withMessages([
-                            'slot_time' => 'One or more selected barbers already have a booking at this time.',
-                        ]);
-                    }
-                }
-
                 return $barberIds->map(fn (int $barberId): ScheduleOpenSlot => ScheduleOpenSlot::create([
                     'slot_date' => $validated['slot_date'],
                     'slot_time' => $slotTime,

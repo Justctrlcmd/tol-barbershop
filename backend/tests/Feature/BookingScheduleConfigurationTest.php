@@ -211,6 +211,76 @@ test('custom open slots expose a recurring closed day for multiple barbers', fun
         ]);
 });
 
+test('an explicit open slot overrides a standard booking duration', function () {
+    $manager = scheduleUser('manager');
+    $barber = scheduleUser('barber');
+    $firstCustomer = BookingCustomer::create([
+        'fullname' => 'Existing Customer',
+        'email' => 'existing-open-slot@example.com',
+        'contact_number' => '09123456780',
+    ]);
+    $secondCustomer = BookingCustomer::create([
+        'fullname' => 'Override Customer',
+        'email' => 'override-open-slot@example.com',
+        'contact_number' => '09123456781',
+    ]);
+    $service = Service::create([
+        'name' => 'Override Haircut',
+        'description' => 'Service used for open-slot overrides',
+        'duration' => 60,
+        'price' => 200,
+        'is_active' => true,
+    ]);
+    Appointment::create([
+        'booking_customer_id' => $firstCustomer->id,
+        'service_id' => $service->id,
+        'barber_user_id' => $barber->id,
+        'appointment_date' => '2026-09-08',
+        'appointment_time' => '10:00',
+        'duration_minutes' => 60,
+        'price' => 200,
+        'status' => 'confirmed',
+        'active_slot_key' => "{$barber->id}|2026-09-08|10:00",
+    ]);
+    Sanctum::actingAs($manager);
+
+    $this->postJson('/api/v1/schedule-open-slots', [
+        'slot_date' => '2026-09-08',
+        'barber_user_ids' => [$barber->id],
+        'hour' => 10,
+        'minute' => 30,
+        'period' => 'AM',
+    ])->assertCreated();
+
+    $this->postJson('/api/v1/appointments', [
+        'booking_customer_id' => $secondCustomer->id,
+        'service_id' => $service->id,
+        'barber_user_id' => $barber->id,
+        'appointment_date' => '2026-09-08',
+        'appointment_time' => '10:30',
+        'price' => 200,
+        'status' => 'confirmed',
+    ])->assertCreated();
+
+    $this->postJson('/api/v1/appointments', [
+        'booking_customer_id' => $secondCustomer->id,
+        'service_id' => $service->id,
+        'barber_user_id' => $barber->id,
+        'appointment_date' => '2026-09-08',
+        'appointment_time' => '10:30',
+        'price' => 200,
+        'status' => 'confirmed',
+    ])->assertUnprocessable()->assertJsonValidationErrors('appointment_time');
+
+    expect(ScheduleOpenSlot::where([
+        'slot_date' => '2026-09-08',
+        'slot_time' => '10:30',
+        'barber_user_id' => $barber->id,
+    ])->exists())->toBeTrue()
+        ->and(Appointment::count())->toBe(2)
+        ->and(substr((string) Appointment::latest('id')->value('appointment_time'), 0, 5))->toBe('10:30');
+});
+
 test('open slots reject past times explicit closures and partial duplicate writes', function () {
     $manager = scheduleUser('manager');
     $firstBarber = scheduleUser('barber');
