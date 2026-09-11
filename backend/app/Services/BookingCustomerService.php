@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BookingCustomer;
+use App\Models\Scopes\ActiveBookingCustomerScope;
 use Illuminate\Validation\ValidationException;
 
 class BookingCustomerService
@@ -24,7 +25,7 @@ class BookingCustomerService
             ]);
         }
 
-        $matches = BookingCustomer::query()
+        $matches = BookingCustomer::withoutGlobalScope(ActiveBookingCustomerScope::class)
             ->where(function ($query) use ($email, $contact, $matchByName, $normalizedName): void {
                 if ($email) {
                     $query->where('email', $email);
@@ -34,22 +35,34 @@ class BookingCustomerService
                         ? $query->orWhere('contact_number', $contact)
                         : $query->where('contact_number', $contact);
                 }
-                if ($matchByName) {
-                    $query
-                        ->when($email || $contact, fn ($nameQuery) => $nameQuery->orWhereRaw('LOWER(fullname) = ?', [$normalizedName]))
-                        ->unless($email || $contact, fn ($nameQuery) => $nameQuery->whereRaw('LOWER(fullname) = ?', [$normalizedName]));
+                if ($matchByName && ! $email && ! $contact) {
+                    $query->whereRaw('LOWER(fullname) = ?', [$normalizedName]);
                 }
             })
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
 
-        $emailMatch = $email ? $matches->firstWhere('email', $email) : null;
+        $emailMatch = $email
+            ? $matches
+                ->filter(fn (BookingCustomer $customer): bool => $customer->email === $email)
+                ->map(fn (BookingCustomer $customer): BookingCustomer => $customer->canonical())
+                ->unique('id')
+                ->first()
+            : null;
         $contactMatches = $contact
-            ? $matches->where('contact_number', $contact)->values()
+            ? $matches
+                ->where('contact_number', $contact)
+                ->map(fn (BookingCustomer $customer): BookingCustomer => $customer->canonical())
+                ->unique('id')
+                ->values()
             : collect();
-        $nameMatches = $matchByName
-            ? $matches->filter(fn (BookingCustomer $customer): bool => $this->normalizeName($customer->fullname) === $normalizedName)->values()
+        $nameMatches = $matchByName && ! $email && ! $contact
+            ? $matches
+                ->filter(fn (BookingCustomer $customer): bool => $this->normalizeName($customer->fullname) === $normalizedName)
+                ->map(fn (BookingCustomer $customer): BookingCustomer => $customer->canonical())
+                ->unique('id')
+                ->values()
             : collect();
 
         if ($emailMatch && $contactMatches->contains(fn (BookingCustomer $customer): bool => $customer->id !== $emailMatch->id)) {

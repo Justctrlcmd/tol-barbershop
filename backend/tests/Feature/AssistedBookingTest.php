@@ -125,26 +125,30 @@ test('assisted booking reuses the oldest crm customer when names are duplicated'
     Notification::assertNothingSent();
 });
 
-test('assisted booking links by name and fills newly supplied crm details', function () {
+test('assisted booking prioritizes email and contact over name matching', function () {
     Notification::fake();
     [$manager, $barber, $service] = assistedBookingResources();
     $customer = BookingCustomer::create([
-        'fullname' => 'Details Match Customer',
-        'email' => null,
-        'contact_number' => null,
+        'fullname' => 'Identifier Match Customer',
+        'email' => 'identifier-match@example.test',
+        'contact_number' => '09170000003',
+    ]);
+    BookingCustomer::create([
+        'fullname' => 'Identifier Match Customer',
+        'email' => 'other-customer@example.test',
+        'contact_number' => '09170000004',
     ]);
     Sanctum::actingAs($manager);
 
     $this->postJson('/api/v1/assisted-bookings', assistedBookingPayload($barber, $service, [
-        'customer_name' => 'details match customer',
-        'customer_email' => 'details-match@example.test',
+        'customer_name' => 'identifier match customer',
+        'customer_email' => 'identifier-match@example.test',
         'customer_contact_number' => '09170000003',
         'appointment_time' => '11:00',
     ]))->assertCreated();
 
-    expect(BookingCustomer::count())->toBe(1)
-        ->and($customer->refresh()->email)->toBe('details-match@example.test')
-        ->and($customer->contact_number)->toBe('09170000003')
+    expect(BookingCustomer::count())->toBe(2)
+        ->and($customer->refresh()->fullname)->toBe('identifier match customer')
         ->and(Appointment::sole()->booking_customer_id)->toBe($customer->id);
 });
 
