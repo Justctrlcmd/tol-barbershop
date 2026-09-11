@@ -6,6 +6,7 @@ use App\Http\Requests\ScheduleOpenSlotRequest;
 use App\Http\Resources\ScheduleOpenSlotResource;
 use App\Models\Appointment;
 use App\Models\ScheduleOpenSlot;
+use App\Models\ScheduleOpenSlotActivity;
 use App\Models\User;
 use App\Services\AppointmentBookingService;
 use App\Services\BookingScheduleService;
@@ -59,8 +60,10 @@ class ScheduleOpenSlotController extends Controller
             ]);
         }
 
+        $actor = $request->user();
+
         try {
-            $slots = DB::transaction(function () use ($validated, $slotTime, $request) {
+            $slots = DB::transaction(function () use ($validated, $slotTime, $actor) {
                 $barberIds = collect($validated['barber_user_ids'])
                     ->map(fn (int|string $id): int => (int) $id)
                     ->unique()
@@ -102,12 +105,28 @@ class ScheduleOpenSlotController extends Controller
                     ]);
                 }
 
-                return $barberIds->map(fn (int $barberId): ScheduleOpenSlot => ScheduleOpenSlot::create([
-                    'slot_date' => $validated['slot_date'],
-                    'slot_time' => $slotTime,
-                    'barber_user_id' => $barberId,
-                    'created_by_user_id' => $request->user()?->id,
-                ]));
+                return $barberIds->map(function (int $barberId) use ($validated, $slotTime, $barbers, $actor): ScheduleOpenSlot {
+                    $slot = ScheduleOpenSlot::create([
+                        'slot_date' => $validated['slot_date'],
+                        'slot_time' => $slotTime,
+                        'barber_user_id' => $barberId,
+                        'created_by_user_id' => $actor?->id,
+                    ]);
+
+                    ScheduleOpenSlotActivity::create([
+                        'schedule_open_slot_id' => $slot->id,
+                        'action' => 'added',
+                        'slot_date' => $slot->slot_date,
+                        'slot_time' => $slot->slot_time,
+                        'barber_user_id' => $barberId,
+                        'barber_name_snapshot' => $barbers->get($barberId)?->fullname,
+                        'reason' => 'Open slot added',
+                        'actor_user_id' => $actor?->id,
+                        'actor_name_snapshot' => $actor?->fullname,
+                    ]);
+
+                    return $slot;
+                });
             }, 3);
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages([
@@ -126,7 +145,9 @@ class ScheduleOpenSlotController extends Controller
 
     public function destroy(ScheduleOpenSlot $scheduleOpenSlot): JsonResponse
     {
-        DB::transaction(function () use ($scheduleOpenSlot): void {
+        $actor = request()->user();
+
+        DB::transaction(function () use ($scheduleOpenSlot, $actor): void {
             $slot = ScheduleOpenSlot::query()->whereKey($scheduleOpenSlot->id)->lockForUpdate()->firstOrFail();
             $schedule = $this->scheduleService->forDate($slot->slot_date);
             $isStandard = $this->scheduleService->isStartTimeAllowedBySchedule(
@@ -150,6 +171,18 @@ class ScheduleOpenSlotController extends Controller
                     ]);
                 }
             }
+
+            ScheduleOpenSlotActivity::create([
+                'schedule_open_slot_id' => $slot->id,
+                'action' => 'removed',
+                'slot_date' => $slot->slot_date,
+                'slot_time' => $slot->slot_time,
+                'barber_user_id' => $slot->barber_user_id,
+                'barber_name_snapshot' => $slot->barber?->fullname,
+                'reason' => 'Open slot removed',
+                'actor_user_id' => $actor?->id,
+                'actor_name_snapshot' => $actor?->fullname,
+            ]);
 
             $slot->delete();
         }, 3);

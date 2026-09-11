@@ -33,6 +33,7 @@ class AssistedBookingController extends Controller
                     $validated['customer_email'] ?? null,
                     $validated['customer_contact_number'] ?? null,
                     'customer_contact_number',
+                    true,
                 );
                 $resources = $this->bookingService->validateAndLock(
                     $customer->id,

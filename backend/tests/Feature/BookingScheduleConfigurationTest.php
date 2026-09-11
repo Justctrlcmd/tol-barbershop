@@ -5,6 +5,7 @@ use App\Models\BookingCustomer;
 use App\Models\BookingSchedule;
 use App\Models\ClosedDates;
 use App\Models\ScheduleOpenSlot;
+use App\Models\ScheduleOpenSlotActivity;
 use App\Models\Service;
 use App\Models\User;
 use Carbon\Carbon;
@@ -209,6 +210,37 @@ test('custom open slots expose a recurring closed day for multiple barbers', fun
             'time' => '14:30',
             'barber_user_id' => $secondBarber->id,
         ]);
+});
+
+test('open slot activity is recorded for additions and removals', function () {
+    $manager = scheduleUser('manager');
+    $barber = scheduleUser('barber');
+    Sanctum::actingAs($manager);
+
+    $response = $this->postJson('/api/v1/schedule-open-slots', [
+        'slot_date' => '2026-09-08',
+        'barber_user_ids' => [$barber->id],
+        'hour' => 2,
+        'minute' => 30,
+        'period' => 'PM',
+    ])->assertCreated();
+
+    $slotId = (int) $response->json('data.0.id');
+
+    expect(ScheduleOpenSlotActivity::query()->where('action', 'added')->count())->toBe(1);
+
+    $this->getJson('/api/v1/closed-dates/activity?per_page=5')
+        ->assertOk()
+        ->assertJsonPath('data.data.0.activity_type', 'open_slot')
+        ->assertJsonPath('data.data.0.action', 'added')
+        ->assertJsonPath('data.data.0.slot_date', '2026-09-08')
+        ->assertJsonPath('data.data.0.slot_time', '14:30')
+        ->assertJsonPath('data.data.0.actor_name', $manager->fullname);
+
+    $this->deleteJson("/api/v1/schedule-open-slots/{$slotId}")
+        ->assertOk();
+
+    expect(ScheduleOpenSlotActivity::query()->where('action', 'removed')->count())->toBe(1);
 });
 
 test('an explicit open slot overrides a standard booking duration', function () {

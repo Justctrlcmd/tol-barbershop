@@ -37,7 +37,7 @@ class AppointmentRequest extends FormRequest
         return [
             'booking_customer_id' => [
                 'required_without:is_walkin',
-                'exists:booking_customers,id',
+                Rule::exists('booking_customers', 'id')->whereNull('merged_into_id'),
             ],
 
             'service_id' => [
