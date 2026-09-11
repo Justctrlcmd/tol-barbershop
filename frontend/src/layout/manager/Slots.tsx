@@ -120,6 +120,10 @@ type TimeSelection = {
   period: "AM" | "PM";
 };
 
+type ScheduleException =
+  | { kind: "open_slot"; sortKey: string; slot: ScheduleOpenSlot }
+  | { kind: "closed_date"; sortKey: string; date: ClosedDate };
+
 function toTimeSelection(value: string): TimeSelection {
   const [hour = "12", minute = "30"] = value.slice(0, 5).split(":");
   const hour24 = Number(hour);
@@ -208,14 +212,14 @@ export function Slots() {
   const canConfigureOperation = user?.role === "manager";
   const [showClosedDateModal, setShowClosedDateModal] = useState(false);
   const [closedDates, setClosedDates] = useState<ClosedDate[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [exceptionsPage, setExceptionsPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [activityLogs, setActivityLogs] = useState<
     Array<{
       title: string;
       reason: string;
       actor: string;
+      actorLabel: string;
       time: string;
     }>
   >([]);
@@ -242,6 +246,31 @@ export function Slots() {
   const recurringClosedDays: Array<number | null> = scheduleDraft.closed_weekdays.length
     ? scheduleDraft.closed_weekdays
     : [null];
+  const scheduleExceptions = [
+    ...openSlots.map((slot): ScheduleException => ({
+      kind: "open_slot",
+      sortKey: `${slot.slot_date}T${slot.slot_time}`,
+      slot,
+    })),
+    ...closedDates.map((date): ScheduleException => ({
+      kind: "closed_date",
+      sortKey: `${date.date_closed}T00:00`,
+      date,
+    })),
+  ].sort((left, right) => left.sortKey.localeCompare(right.sortKey));
+  const exceptionsPerPage = 5;
+  const exceptionsTotalPages = Math.max(
+    1,
+    Math.ceil(scheduleExceptions.length / exceptionsPerPage),
+  );
+  const paginatedExceptions = scheduleExceptions.slice(
+    (exceptionsPage - 1) * exceptionsPerPage,
+    exceptionsPage * exceptionsPerPage,
+  );
+
+  useEffect(() => {
+    setExceptionsPage((page) => Math.min(page, exceptionsTotalPages));
+  }, [exceptionsTotalPages]);
 
   useEffect(() => {
     setHeaderActions(
@@ -334,23 +363,19 @@ export function Slots() {
     }
   }, []);
 
-  const fetchClosedDates = useCallback(async (page: number = 1) => {
+  const fetchClosedDates = useCallback(async () => {
     try {
       setLoading(true);
 
-      const response = await getClosedDates(page, 5, "all");
+      const response = await getClosedDates(1, 100, "all");
 
       if (!response || !response.data) {
         console.error("Invalid response structure:", response);
         setClosedDates([]);
-        setCurrentPage(1);
-        setTotalPages(1);
         return;
       }
 
       setClosedDates(response.data);
-      setCurrentPage(response.current_page || 1);
-      setTotalPages(response.last_page || 1);
     } catch (error) {
       console.error("Error fetching closed dates:", error);
     } finally {
@@ -366,14 +391,38 @@ export function Slots() {
 
       if (activityResponse && activityResponse.data) {
         const logs = activityResponse.data.map((activity: ClosedDateActivity) => {
-          const formattedDate = new Date(activity.date_closed).toLocaleDateString(
-            "en-US",
-            {
+          if (activity.activity_type === "open_slot") {
+            const barberSubject = `${activity.barber_name ?? "Barber"}'s open slot`;
+            const slotDate = activity.slot_date
+              ? formatDisplayDate(activity.slot_date)
+              : "an unknown date";
+            const slotTime = activity.slot_time
+              ? formatScheduleTime(activity.slot_time)
+              : "an unknown time";
+
+            return {
+              title:
+                activity.action === "removed"
+                  ? `${barberSubject} was removed`
+                  : `${barberSubject} was added`,
+              reason: `${activity.reason ?? "Open slot updated"} for ${slotDate} at ${slotTime}`,
+              actor: activity.actor_name ?? "",
+              actorLabel: activity.action === "removed" ? "Closed by" : "Opened by",
+              time: new Date(activity.created_at).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              }),
+            };
+          }
+
+          const formattedDate = activity.date_closed
+            ? new Date(activity.date_closed).toLocaleDateString("en-US", {
               year: "numeric",
               month: "long",
               day: "numeric",
-            },
-          );
+            })
+            : "Unknown date";
           const subject =
             activity.closure_scope === "barber"
               ? `${activity.barber_name ?? "Barber"}'s schedule`
@@ -386,8 +435,9 @@ export function Slots() {
 
           return {
             title,
-            reason: activity.reason,
+            reason: activity.reason ?? "",
             actor: activity.actor_name ?? "",
+            actorLabel: activity.action === "reopened" ? "Opened by" : "Closed by",
             time: formattedDate,
           };
         });
@@ -403,9 +453,9 @@ export function Slots() {
     }
   }, []);
 
-  const fetchAllData = useCallback(async (page: number = 1) => {
+  const fetchAllData = useCallback(async () => {
     await Promise.all([
-      fetchClosedDates(page),
+      fetchClosedDates(),
       fetchActivityLogs(activityCurrentPage),
       fetchScheduleData(),
     ]);
@@ -431,7 +481,7 @@ export function Slots() {
         barber_user_id: data.barber_user_id ?? undefined,
         reason: data.reason,
       });
-      await fetchAllData(currentPage);
+      await fetchAllData();
       closeClosedDateModal();
 
       const formattedDate = data.date_closed!.toLocaleDateString("en-US", {
@@ -457,7 +507,7 @@ export function Slots() {
     setIsReopening(true);
     try {
       await updateClosedDate(id, { is_removed: true });
-      await fetchAllData(currentPage);
+      await fetchAllData();
 
       const date = new Date(dateClosed);
       const formattedDate = date.toLocaleDateString("en-US", {
@@ -529,6 +579,7 @@ export function Slots() {
     try {
       await createScheduleOpenSlots(validation.data);
       setOpenSlots(await getScheduleOpenSlots());
+      await fetchActivityLogs(1);
       setShowOpenSlotModal(false);
       setOpenSlotDate(undefined);
       setOpenSlotBarbers([]);
@@ -544,6 +595,7 @@ export function Slots() {
     try {
       await deleteScheduleOpenSlot(id);
       setOpenSlots((current) => current.filter((slot) => slot.id !== id));
+      await fetchActivityLogs(1);
       toast.success("Open slot removed.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not remove open slot.");
@@ -577,91 +629,99 @@ export function Slots() {
             </div>
           </div>
           <div className="mb-5">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Custom Open Slots</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Custom Slots and Closed Dates
+            </p>
             <div className="space-y-2">
-              {openSlots.length === 0 ? (
-                <p className="text-sm text-gray-500">No custom open slots found</p>
-              ) : openSlots.slice(0, 8).map((slot) => (
-                <div key={slot.id} className="flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800">
-                      {formatDisplayDate(slot.slot_date)} at {formatScheduleTime(slot.slot_time)}
-                    </p>
-                    <p className="truncate text-xs text-gray-500">{slot.barber_name}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteOpenSlot(slot.id)}
-                    className="rounded p-1 text-emerald-700 hover:bg-emerald-100"
-                    aria-label={`Remove open slot for ${slot.barber_name}`}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                </div>
-              ))}
+              {loading ? (
+                <p className="text-gray-500 text-sm">Loading...</p>
+              ) : scheduleExceptions.length === 0 ? (
+                <p className="text-sm text-gray-500">No custom slots or closed dates found</p>
+              ) : (
+                paginatedExceptions.map((exception) => {
+                  if (exception.kind === "open_slot") {
+                    const { slot } = exception;
+
+                    return (
+                      <div
+                        key={`open-slot-${slot.id}`}
+                        className="flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 p-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800">
+                            {formatDisplayDate(slot.slot_date)} at {formatScheduleTime(slot.slot_time)}
+                          </p>
+                          <p className="truncate text-xs text-gray-500">{slot.barber_name}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteOpenSlot(slot.id)}
+                          className="rounded p-1 text-emerald-700 hover:bg-emerald-100"
+                          aria-label={`Remove open slot for ${slot.barber_name}`}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  const { date } = exception;
+                  const formattedDate = new Date(date.date_closed).toLocaleDateString(
+                    "en-US",
+                    {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    },
+                  );
+
+                  return (
+                    <div
+                      key={`closed-date-${date.id}`}
+                      className="flex items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 p-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Calendar size={16} className="text-red-500" />
+                        <div className="min-w-0">
+                          <p className="text-sm text-gray-700">{formattedDate}</p>
+                          <p className="truncate text-xs text-gray-500">
+                            {date.closure_scope === "barber"
+                              ? date.barber_name
+                              : "Whole shop"}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setClosedDateToReopen(date)}
+                        disabled={isReopening}
+                        className="rounded p-1 text-red-600 hover:bg-red-100 hover:text-red-700"
+                        aria-label={`Reopen ${formattedDate}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Closed Dates</p>
-          <div className="space-y-2">
-            {loading ? (
-              <p className="text-gray-500 text-sm">Loading...</p>
-            ) : closedDates.length === 0 ? (
-              <p className="text-gray-500 text-sm">No closed dates found</p>
-            ) : (
-              closedDates.map((date) => {
-                const formattedDate = new Date(
-                  date.date_closed,
-                ).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                });
-                return (
-                  <div
-                    key={date.id}
-                    className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-md"
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Calendar size={16} className="text-red-500" />
-                      <div className="min-w-0">
-                        <p className="text-sm text-gray-700">{formattedDate}</p>
-                        <p className="truncate text-xs text-gray-500">
-                          {date.closure_scope === "barber"
-                            ? date.barber_name
-                            : "Whole shop"}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setClosedDateToReopen(date)}
-                      disabled={isReopening}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-100 p-1 rounded"
-                      aria-label={`Reopen ${formattedDate}`}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
 
-          {totalPages > 1 && (
+          {exceptionsTotalPages > 1 && (
             <div className="flex justify-between items-center mt-4">
               <button
-                onClick={() => fetchClosedDates(currentPage - 1)}
-                disabled={currentPage === 1}
+                onClick={() => setExceptionsPage((page) => Math.max(1, page - 1))}
+                disabled={exceptionsPage === 1}
                 className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded"
               >
                 Previous
               </button>
               <span className="text-sm text-gray-600">
-                Page {currentPage} of {totalPages}
+                Page {exceptionsPage} of {exceptionsTotalPages}
               </span>
               <button
-                onClick={() => fetchClosedDates(currentPage + 1)}
-                disabled={currentPage === totalPages}
+                onClick={() => setExceptionsPage((page) => Math.min(exceptionsTotalPages, page + 1))}
+                disabled={exceptionsPage === exceptionsTotalPages}
                 className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded"
               >
                 Next
@@ -746,6 +806,7 @@ export function Slots() {
                 title={log.title}
                 reason={log.reason}
                 actor={log.actor}
+                actorLabel={log.actorLabel}
                 time={log.time}
               />
             ))

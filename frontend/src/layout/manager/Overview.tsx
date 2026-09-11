@@ -20,6 +20,7 @@ import {
   Mail,
   MoreVertical,
   Phone,
+  Plus,
   Star,
   StickyNote,
   User,
@@ -35,7 +36,9 @@ import {
 } from "react";
 
 import { AppointmentStatusBadge } from "@/components/common/AppointmentStatusBadge";
+import { AppointmentAddOnDialog } from "@/components/common/AppointmentAddOnDialog";
 import { CancellationForm } from "@/forms/CancellationForm";
+import { RescheduleForm, type RescheduleSubmitData } from "@/forms/RescheduleForm";
 import { StatCard } from "@/components/common/StatCard";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -152,7 +155,7 @@ function normalizeAppointmentTime(time: string): string {
 
 function buildDashboardAppointmentUpdate(
   appointment: Appointment,
-  status: "confirmed" | "rejected" | "completed" | "no_show",
+  status: "confirmed" | "rejected" | "cancelled" | "completed" | "no_show",
   cancellationReason?: string | null,
 ) {
   const payload = {
@@ -220,7 +223,21 @@ function getSlotAvailabilityLabel(
   compact = false,
 ): string {
   if (slot.is_closed) return "Closed";
-  if (slot.is_past) return "Past";
+  if (slot.is_past) {
+    if (slot.appointments.length === 0) return "Unbooked";
+
+    const statuses = Array.from(
+      new Set(slot.appointments.map((appointment) => appointment.status)),
+    );
+
+    return statuses
+      .map((status) =>
+        status
+          .replace("_", " ")
+          .replace(/^\w/, (character) => character.toUpperCase()),
+      )
+      .join(" / ");
+  }
   if (slot.total_barbers === 0) return "No active barbers";
   if (slot.is_fully_booked) return "Fully Booked";
   return compact
@@ -235,6 +252,9 @@ function AppointmentDetailModal({
   onConfirm,
   onReject,
   onStatusChange,
+  onCancel,
+  onReschedule,
+  onAddOn,
   actionDisabled = false,
 }: {
   slot: TimeSlot | null;
@@ -246,6 +266,9 @@ function AppointmentDetailModal({
     appointment: SlotAppointment,
     status: "completed" | "no_show",
   ) => void;
+  onCancel?: (appointment: SlotAppointment) => void;
+  onReschedule?: (appointment: SlotAppointment) => void;
+  onAddOn?: (appointment: SlotAppointment) => void;
   actionDisabled?: boolean;
 }) {
   if (!slot) return null;
@@ -288,6 +311,18 @@ function AppointmentDetailModal({
                   onStatusChange={onStatusChange ? (selectedAppointment, status) => {
                     onClose();
                     onStatusChange(selectedAppointment, status);
+                  } : undefined}
+                  onCancel={onCancel ? (selectedAppointment) => {
+                    onClose();
+                    onCancel(selectedAppointment);
+                  } : undefined}
+                  onReschedule={onReschedule ? (selectedAppointment) => {
+                    onClose();
+                    onReschedule(selectedAppointment);
+                  } : undefined}
+                  onAddOn={onAddOn ? (selectedAppointment) => {
+                    onClose();
+                    onAddOn(selectedAppointment);
                   } : undefined}
                   disabled={actionDisabled}
                 />
@@ -465,6 +500,9 @@ function DashboardAppointmentActionMenu({
   onConfirm,
   onReject,
   onStatusChange,
+  onCancel,
+  onReschedule,
+  onAddOn,
   disabled = false,
 }: {
   appointment: SlotAppointment;
@@ -474,6 +512,9 @@ function DashboardAppointmentActionMenu({
     appointment: SlotAppointment,
     status: "completed" | "no_show",
   ) => void;
+  onCancel?: (appointment: SlotAppointment) => void;
+  onReschedule?: (appointment: SlotAppointment) => void;
+  onAddOn?: (appointment: SlotAppointment) => void;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -537,8 +578,23 @@ function DashboardAppointmentActionMenu({
               Reject
             </button>
           )}
-          {isConfirmed && onStatusChange && (
+          {isConfirmed && (
             <>
+              {onAddOn && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onAddOn(appointment);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+                >
+                  <Plus className="h-4 w-4 text-red-500" />
+                  Add-on
+                </button>
+              )}
+              {onStatusChange && (
+                <>
               <button
                 type="button"
                 disabled={statusActionDisabled}
@@ -585,6 +641,34 @@ function DashboardAppointmentActionMenu({
                 <UserX className="h-4 w-4 text-red-400" />
                 No-show
               </button>
+                </>
+              )}
+              {onReschedule && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onReschedule(appointment);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+                >
+                  <CalendarDays className="h-4 w-4 text-blue-500" />
+                  Re-schedule
+                </button>
+              )}
+              {onCancel && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onCancel(appointment);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+                >
+                  <X className="h-4 w-4 text-red-500" />
+                  Cancel
+                </button>
+              )}
             </>
           )}
           {!isPending && !isConfirmed && (
@@ -694,15 +778,33 @@ function TimeSlotCard({
     );
   }
 
+  const statuses = new Set(
+    slot.appointments.map((appointment) => appointment.status),
+  );
+  const uniformStatus = statuses.size === 1
+    ? slot.appointments[0]?.status
+    : null;
+
   return (
-    <div className="relative min-h-16 w-full rounded-xl border border-purple-200 bg-purple-50 transition-shadow hover:shadow-md">
+    <div
+      className={cn(
+        "relative min-h-16 w-full rounded-xl border transition-shadow hover:shadow-md",
+        uniformStatus ? getStatusColor(uniformStatus) : "border-purple-200 bg-purple-50",
+      )}
+    >
       <button
       type="button"
       onClick={onClick}
       className="flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-xl bg-transparent p-3 text-left"
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-100">
-          <Clock className="h-4 w-4 text-purple-600" />
+        <div className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+          uniformStatus ? "bg-white/50" : "bg-purple-100",
+        )}>
+          <Clock className={cn(
+            "h-4 w-4",
+            uniformStatus ? "text-gray-600" : "text-purple-600",
+          )} />
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-gray-900">{slot.time}</p>
@@ -730,6 +832,12 @@ export function Overview() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [detailSlot, setDetailSlot] = useState<TimeSlot | null>(null);
   const [dashboardRejectAppointment, setDashboardRejectAppointment] =
+    useState<Appointment | null>(null);
+  const [dashboardCancellationAppointment, setDashboardCancellationAppointment] =
+    useState<Appointment | null>(null);
+  const [dashboardRescheduleAppointment, setDashboardRescheduleAppointment] =
+    useState<Appointment | null>(null);
+  const [dashboardAddOnAppointment, setDashboardAddOnAppointment] =
     useState<Appointment | null>(null);
   const [dashboardActionId, setDashboardActionId] = useState<number | null>(
     null,
@@ -869,6 +977,63 @@ export function Overview() {
     }
   };
 
+  const handleDashboardCancel = async (slotAppointment: SlotAppointment) => {
+    if (dashboardActionId !== null) return;
+
+    setDashboardActionId(slotAppointment.id);
+    try {
+      const appointment = await resolveDashboardAppointment(slotAppointment.id);
+      setDashboardCancellationAppointment(appointment);
+    } catch (error) {
+      console.error("Failed to load dashboard booking:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not load this booking. Please try again.",
+      );
+    } finally {
+      setDashboardActionId(null);
+    }
+  };
+
+  const handleDashboardReschedule = async (slotAppointment: SlotAppointment) => {
+    if (dashboardActionId !== null) return;
+
+    setDashboardActionId(slotAppointment.id);
+    try {
+      const appointment = await resolveDashboardAppointment(slotAppointment.id);
+      setDashboardRescheduleAppointment(appointment);
+    } catch (error) {
+      console.error("Failed to load dashboard booking:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not load this booking. Please try again.",
+      );
+    } finally {
+      setDashboardActionId(null);
+    }
+  };
+
+  const handleDashboardAddOn = async (slotAppointment: SlotAppointment) => {
+    if (dashboardActionId !== null) return;
+
+    setDashboardActionId(slotAppointment.id);
+    try {
+      const appointment = await resolveDashboardAppointment(slotAppointment.id);
+      setDashboardAddOnAppointment(appointment);
+    } catch (error) {
+      console.error("Failed to load dashboard booking:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not load this booking. Please try again.",
+      );
+    } finally {
+      setDashboardActionId(null);
+    }
+  };
+
   const handleDashboardRejectSubmit = async (
     data: CancellationReasonSchemaFormValues,
   ) => {
@@ -909,6 +1074,88 @@ export function Overview() {
     } finally {
       setDashboardActionId(null);
     }
+  };
+
+  const handleDashboardCancellationSubmit = async (
+    data: CancellationReasonSchemaFormValues,
+  ) => {
+    const appointment = dashboardCancellationAppointment;
+    if (!appointment || dashboardActionId !== null) return;
+
+    setDashboardActionId(appointment.id);
+    try {
+      const payload = buildDashboardAppointmentUpdate(
+        appointment,
+        "cancelled",
+        data.cancellation_reason.trim(),
+      );
+      await updateAppointment(appointment.id, payload);
+      toast.success("Booking cancelled.");
+      setDashboardCancellationAppointment(null);
+      await loadSchedule();
+      window.dispatchEvent(new CustomEvent("appointments:updated"));
+    } catch (error) {
+      console.error("Failed to cancel dashboard booking:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not cancel this booking. Please try again.",
+      );
+    } finally {
+      setDashboardActionId(null);
+    }
+  };
+
+  const handleDashboardRescheduleSubmit = async (
+    data: RescheduleSubmitData,
+  ) => {
+    const appointment = dashboardRescheduleAppointment;
+    if (!appointment || dashboardActionId !== null) return;
+
+    setDashboardActionId(appointment.id);
+    try {
+      const payload = {
+        booking_customer_id: appointment.customer.id ?? 0,
+        service_id: appointment.service.id ?? 0,
+        barber_user_id: data.barber_user_id,
+        appointment_date: data.appointment_date,
+        appointment_time: data.appointment_time,
+        duration_minutes: appointment.duration_minutes,
+        price: Number(appointment.price),
+        status: "confirmed" as const,
+        notes: data.reason,
+        cancellation_reason: null,
+      };
+      const validation = updateAppointmentSchema.safeParse(payload);
+
+      if (!validation.success) {
+        throw new Error(
+          validation.error.issues[0]?.message ??
+            "Please check the reschedule details and try again.",
+        );
+      }
+
+      await updateAppointment(appointment.id, validation.data);
+      toast.success("Booking rescheduled successfully.");
+      setDashboardRescheduleAppointment(null);
+      await loadSchedule();
+      window.dispatchEvent(new CustomEvent("appointments:updated"));
+    } catch (error) {
+      console.error("Failed to reschedule dashboard booking:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not reschedule this booking. Please try again.",
+      );
+    } finally {
+      setDashboardActionId(null);
+    }
+  };
+
+  const handleDashboardAddOnUpdated = (updatedAppointment: Appointment) => {
+    setDashboardAddOnAppointment(updatedAppointment);
+    void loadSchedule();
+    window.dispatchEvent(new CustomEvent("appointments:updated"));
   };
 
   const handleDashboardStatusChange = async (
@@ -1249,6 +1496,9 @@ export function Overview() {
         onConfirm={handleDashboardConfirm}
         onReject={handleDashboardReject}
         onStatusChange={handleDashboardStatusChange}
+        onCancel={handleDashboardCancel}
+        onReschedule={handleDashboardReschedule}
+        onAddOn={handleDashboardAddOn}
         actionDisabled={dashboardActionId !== null}
       />
 
@@ -1261,6 +1511,34 @@ export function Overview() {
           onSubmit={handleDashboardRejectSubmit}
         />
       )}
+
+      {dashboardCancellationAppointment && (
+        <CancellationForm
+          appointment={dashboardCancellationAppointment}
+          open={true}
+          mode="cancel"
+          onClose={() => setDashboardCancellationAppointment(null)}
+          onSubmit={handleDashboardCancellationSubmit}
+        />
+      )}
+
+      {dashboardRescheduleAppointment && (
+        <RescheduleForm
+          appointment={dashboardRescheduleAppointment}
+          open={true}
+          onClose={() => setDashboardRescheduleAppointment(null)}
+          onSubmit={handleDashboardRescheduleSubmit}
+        />
+      )}
+
+      <AppointmentAddOnDialog
+        appointment={dashboardAddOnAppointment}
+        open={dashboardAddOnAppointment !== null}
+        onOpenChange={(open) => {
+          if (!open) setDashboardAddOnAppointment(null);
+        }}
+        onUpdated={handleDashboardAddOnUpdated}
+      />
     </div>
   );
 }

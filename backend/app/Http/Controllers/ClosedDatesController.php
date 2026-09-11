@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ClosedDatesRequest;
 use App\Http\Requests\ReopenClosedDateRequest;
-use App\Http\Resources\ClosedDateActivityResource;
 use App\Http\Resources\ClosedDatesResource;
 use App\Models\Appointment;
 use App\Models\ClosedDateActivity;
@@ -104,13 +103,70 @@ class ClosedDatesController extends Controller
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
         $perPage = (int) ($validated['per_page'] ?? 5);
-        $activities = ClosedDateActivity::query()
+
+        $closedDateActivities = DB::table('closed_date_activities')->select([
+            'id',
+            DB::raw("'closed_date' as activity_type"),
+            'closed_date_id',
+            DB::raw('NULL as schedule_open_slot_id'),
+            'action',
+            'closure_scope',
+            'date_closed',
+            DB::raw('NULL as slot_date'),
+            DB::raw('NULL as slot_time'),
+            'barber_user_id',
+            'barber_name_snapshot',
+            'reason',
+            'actor_user_id',
+            'actor_name_snapshot',
+            'created_at',
+        ]);
+        $openSlotActivities = DB::table('schedule_open_slot_activities')->select([
+            'id',
+            DB::raw("'open_slot' as activity_type"),
+            DB::raw('NULL as closed_date_id'),
+            'schedule_open_slot_id',
+            'action',
+            DB::raw("'barber' as closure_scope"),
+            DB::raw('NULL as date_closed'),
+            'slot_date',
+            'slot_time',
+            'barber_user_id',
+            'barber_name_snapshot',
+            'reason',
+            'actor_user_id',
+            'actor_name_snapshot',
+            'created_at',
+        ]);
+        $activities = DB::query()
+            ->fromSub($closedDateActivities->unionAll($openSlotActivities), 'schedule_activities')
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate($perPage);
 
-        return $this->success('Closed date activity fetched successfully', [
-            'data' => ClosedDateActivityResource::collection($activities)->items(),
+        return $this->success('Schedule activity fetched successfully', [
+            'data' => collect($activities->items())->map(fn (object $activity): array => [
+                'id' => (int) $activity->id,
+                'activity_type' => $activity->activity_type,
+                'closed_date_id' => $activity->closed_date_id,
+                'schedule_open_slot_id' => $activity->schedule_open_slot_id,
+                'action' => $activity->action,
+                'closure_scope' => $activity->closure_scope,
+                'date_closed' => $activity->date_closed
+                    ? substr((string) $activity->date_closed, 0, 10)
+                    : null,
+                'slot_date' => $activity->slot_date
+                    ? substr((string) $activity->slot_date, 0, 10)
+                    : null,
+                'slot_time' => $activity->slot_time
+                    ? substr((string) $activity->slot_time, 0, 5)
+                    : null,
+                'barber_user_id' => $activity->barber_user_id,
+                'barber_name' => $activity->barber_name_snapshot,
+                'reason' => $activity->reason,
+                'actor_name' => $activity->actor_name_snapshot,
+                'created_at' => $activity->created_at,
+            ])->values()->all(),
             'current_page' => $activities->currentPage(),
             'last_page' => $activities->lastPage(),
             'per_page' => $activities->perPage(),

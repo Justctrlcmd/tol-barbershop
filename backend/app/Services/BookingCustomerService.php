@@ -12,8 +12,11 @@ class BookingCustomerService
         ?string $email,
         ?string $contact,
         string $contactField = 'contact_number',
+        bool $matchByName = false,
     ): BookingCustomer {
-        if (! $email && ! $contact) {
+        $normalizedName = $this->normalizeName($fullname);
+
+        if (! $email && ! $contact && ! $matchByName) {
             return BookingCustomer::create([
                 'fullname' => $fullname,
                 'email' => null,
@@ -22,7 +25,7 @@ class BookingCustomerService
         }
 
         $matches = BookingCustomer::query()
-            ->where(function ($query) use ($email, $contact): void {
+            ->where(function ($query) use ($email, $contact, $matchByName, $normalizedName): void {
                 if ($email) {
                     $query->where('email', $email);
                 }
@@ -30,6 +33,11 @@ class BookingCustomerService
                     $email
                         ? $query->orWhere('contact_number', $contact)
                         : $query->where('contact_number', $contact);
+                }
+                if ($matchByName) {
+                    $query
+                        ->when($email || $contact, fn ($nameQuery) => $nameQuery->orWhereRaw('LOWER(fullname) = ?', [$normalizedName]))
+                        ->unless($email || $contact, fn ($nameQuery) => $nameQuery->whereRaw('LOWER(fullname) = ?', [$normalizedName]));
                 }
             })
             ->orderBy('id')
@@ -40,6 +48,9 @@ class BookingCustomerService
         $contactMatches = $contact
             ? $matches->where('contact_number', $contact)->values()
             : collect();
+        $nameMatches = $matchByName
+            ? $matches->filter(fn (BookingCustomer $customer): bool => $this->normalizeName($customer->fullname) === $normalizedName)->values()
+            : collect();
 
         if ($emailMatch && $contactMatches->contains(fn (BookingCustomer $customer): bool => $customer->id !== $emailMatch->id)) {
             throw ValidationException::withMessages([
@@ -47,13 +58,31 @@ class BookingCustomerService
             ]);
         }
 
-        if (! $emailMatch && $contactMatches->count() > 1) {
+        if ($contactMatches->count() > 1) {
             throw ValidationException::withMessages([
                 $contactField => 'Multiple customers use this contact number. Add the customer email to identify the correct record.',
             ]);
         }
 
-        $customer = $emailMatch ?? $contactMatches->first();
+        $identifierMatches = collect([$emailMatch, $contactMatches->first()])
+            ->filter()
+            ->unique('id')
+            ->values();
+
+        if ($identifierMatches->count() > 1) {
+            throw ValidationException::withMessages([
+                $contactField => 'The provided customer identifiers belong to different customer records.',
+            ]);
+        }
+
+        $customer = $identifierMatches->first();
+        if ($customer && $nameMatches->contains(fn (BookingCustomer $match): bool => $match->id !== $customer->id)) {
+            throw ValidationException::withMessages([
+                'customer_name' => 'The customer name and contact details belong to different customer records.',
+            ]);
+        }
+
+        $customer ??= $nameMatches->first();
         $attributes = ['fullname' => $fullname];
         if ($email) {
             $attributes['email'] = $email;
@@ -73,5 +102,10 @@ class BookingCustomerService
             'email' => $email,
             'contact_number' => $contact,
         ]);
+    }
+
+    private function normalizeName(string $fullname): string
+    {
+        return preg_replace('/\s+/u', ' ', mb_strtolower(trim($fullname))) ?? mb_strtolower(trim($fullname));
     }
 }

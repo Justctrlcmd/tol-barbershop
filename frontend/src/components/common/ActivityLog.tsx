@@ -4,10 +4,11 @@ type ActivityLogProps = {
   title: string;
   reason: string;
   actor: string;
+  actorLabel?: string;
   time: string;
 };
 
-export function ActivityLog({ title, reason, actor, time }: ActivityLogProps) {
+export function ActivityLog({ title, reason, actor, actorLabel = "Closed by", time }: ActivityLogProps) {
   return (
     <div className="flex items-start gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
       <div className="p-2 bg-white rounded-lg border border-gray-200 shrink-0">
@@ -22,7 +23,7 @@ export function ActivityLog({ title, reason, actor, time }: ActivityLogProps) {
             </p>
           )}
           {actor && (
-            <p className="text-gray-400">Closed by: {actor}</p>
+            <p className="text-gray-400">{actorLabel}: {actor}</p>
           )}
         </div>
         <p className="text-xs text-gray-400 mt-1.5">{time}</p>
