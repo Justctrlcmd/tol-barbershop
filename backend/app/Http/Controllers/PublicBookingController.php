@@ -113,6 +113,10 @@ class PublicBookingController extends Controller
             'message' => 'Availability retrieved.',
             'data' => $slots,
             'time_slots' => $timeSlots,
+            'open_slot_times' => $this->scheduleService->openSlotTimesFor(
+                $validated['date'],
+                (int) $validated['barber_id'],
+            ),
         ]);
     }
 

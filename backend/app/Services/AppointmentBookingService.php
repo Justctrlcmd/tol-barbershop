@@ -125,6 +125,12 @@ class AppointmentBookingService
             ->lockForUpdate()
             ->get();
 
+        $explicitOpenSlotTimes = $this->scheduleService->openSlotTimesFor(
+            $appointmentDate,
+            $barberUserId,
+            true,
+        );
+
         $occupiedIntervals = $existingAppointments->map(function (Appointment $appointment): array {
             $startMinutes = $this->minutesFromStoredTime((string) $appointment->appointment_time);
             $duration = max(1, (int) ($appointment->duration_minutes ?? $appointment->service?->duration ?? 60));
@@ -139,13 +145,22 @@ class AppointmentBookingService
             $service = $resources['services']->get($slot['service_id']);
             $start = $slot['start_minutes'];
             $end = $start + max(1, (int) $service->duration);
+            $isExplicitOpenSlot = in_array(
+                $this->scheduleService->normalizeTime($slot['appointment_time']),
+                $explicitOpenSlotTimes,
+                true,
+            );
+            $hasBookingAtSameStartTime = collect($occupiedIntervals)
+                ->contains(fn (array $occupied): bool => $occupied['start'] === $start);
 
-            foreach ($occupiedIntervals as $occupied) {
-                if ($start < $occupied['end'] && $end > $occupied['start']) {
-                    $time12 = CarbonImmutable::parse($slot['appointment_time'])->format('g:i A');
-                    throw ValidationException::withMessages([
-                        $slot['field'] => "The time slot {$time12} overlaps another booking.",
-                    ]);
+            if (! $isExplicitOpenSlot || $hasBookingAtSameStartTime) {
+                foreach ($occupiedIntervals as $occupied) {
+                    if ($start < $occupied['end'] && $end > $occupied['start']) {
+                        $time12 = CarbonImmutable::parse($slot['appointment_time'])->format('g:i A');
+                        throw ValidationException::withMessages([
+                            $slot['field'] => "The time slot {$time12} overlaps another booking.",
+                        ]);
+                    }
                 }
             }
 

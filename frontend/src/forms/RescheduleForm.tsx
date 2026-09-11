@@ -116,6 +116,7 @@ export function RescheduleForm({
   const [barbers, setBarbers] = useState<{ value: string; label: string }[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [occupiedSlots, setOccupiedSlots] = useState<OccupiedAppointmentSlot[]>([]);
+  const [explicitOpenSlotTimes, setExplicitOpenSlotTimes] = useState<string[]>([]);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [timeSlots, setTimeSlots] = useState<{ value: string; label: string }[]>([]);
   const [settings, setSettings] = useState<BookingSettings | null>(null);
@@ -198,6 +199,7 @@ export function RescheduleForm({
           appointment.id,
         );
         setOccupiedSlots(availability.occupied_slots);
+        setExplicitOpenSlotTimes(availability.open_slot_times);
         setTimeSlots(availability.time_slots.map((time) => ({
           value: formatTime12(time),
           label: formatTime12(time),
@@ -205,6 +207,7 @@ export function RescheduleForm({
       } catch {
         toast.error("Failed to check availability");
         setOccupiedSlots([]);
+        setExplicitOpenSlotTimes([]);
       } finally {
         setIsCheckingAvailability(false);
       }
@@ -220,12 +223,13 @@ export function RescheduleForm({
         selectedTime,
         Number(appointment.duration_minutes ?? 60),
         occupiedSlots,
+        explicitOpenSlotTimes,
       ) ||
         (selectedDate && isPastTime(selectedTime, new Date(selectedDate))))
     ) {
       setValue("appointment_time", "");
     }
-  }, [selectedTime, occupiedSlots, selectedDate, setValue, appointment.duration_minutes]);
+  }, [selectedTime, explicitOpenSlotTimes, occupiedSlots, selectedDate, setValue, appointment.duration_minutes]);
 
   const onFormInvalid: SubmitErrorHandler<RescheduleFormValues> = () => {
     toast.error("All fields are required");
@@ -397,6 +401,7 @@ export function RescheduleForm({
                     time.value,
                     Number(appointment.duration_minutes ?? 60),
                     occupiedSlots,
+                    explicitOpenSlotTimes,
                   ) ||
                   isPastTime(time.value, parsedSelectedDate),
               }))}

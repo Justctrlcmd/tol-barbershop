@@ -10,6 +10,7 @@ use App\Http\Resources\AppointmentResource;
 use App\Models\Appointment;
 use App\Models\BookingCustomer;
 use App\Models\ClosedDates;
+use App\Models\ScheduleOpenSlot;
 use App\Models\Service;
 use App\Models\User;
 use App\Services\AppointmentBookingService;
@@ -733,6 +734,20 @@ class AppointmentController extends Controller
         $activeAppointmentsByDate = $activeAppointments->groupBy(
             fn (Appointment $appointment): string => $appointment->appointment_date->toDateString(),
         );
+        $openSlotBarberIdsByDateAndTime = ScheduleOpenSlot::query()
+            ->whereBetween('slot_date', [
+                $weekStart->toDateString(),
+                $weekEnd->toDateString(),
+            ])
+            ->whereIn('barber_user_id', $activeBarberIds)
+            ->get(['slot_date', 'slot_time', 'barber_user_id'])
+            ->groupBy(fn (ScheduleOpenSlot $slot): string => $slot->slot_date->toDateString()
+                .'|'.substr((string) $slot->slot_time, 0, 5))
+            ->map(fn (Collection $slots): array => $slots
+                ->pluck('barber_user_id')
+                ->map(fn ($barberId): int => (int) $barberId)
+                ->all())
+            ->all();
 
         $weeklyAppointmentStats = Appointment::withTrashed()
             ->whereBetween('appointment_date', [
@@ -811,6 +826,7 @@ class AppointmentController extends Controller
                         $eligibleBarberIds,
                         $occupiedIntervals,
                         $slotMinutes,
+                        $openSlotBarberIdsByDateAndTime[$dateKey.'|'.$slot['value']] ?? [],
                     );
                 }
             }
@@ -875,6 +891,7 @@ class AppointmentController extends Controller
                 $selectedAvailableBarberIds,
                 $selectedDateIsClosed,
                 $now,
+                $openSlotBarberIdsByDateAndTime,
             ),
         ]);
     }
@@ -990,6 +1007,10 @@ class AppointmentController extends Controller
         return response()->json([
             'data' => $slots,
             'time_slots' => $timeSlots,
+            'open_slot_times' => $this->scheduleService->openSlotTimesFor(
+                $validated['date'],
+                (int) $validated['barber_id'],
+            ),
         ]);
     }
 
@@ -1000,6 +1021,7 @@ class AppointmentController extends Controller
         array $activeBarberIds,
         bool $isClosed,
         Carbon $now,
+        array $openSlotBarberIdsByDateAndTime,
     ): array {
         $appointmentsByTime = $appointments->groupBy(
             fn (Appointment $appointment): string => substr((string) $appointment->appointment_time, 0, 5),
@@ -1015,6 +1037,7 @@ class AppointmentController extends Controller
             $isPastDate,
             $now,
             $occupiedIntervals,
+            $openSlotBarberIdsByDateAndTime,
         ): array {
             $slotMinutes = $this->dashboardTimeToMinutes($slot['value']);
             $isPast = $isPastDate || $this->dashboardSlotIsPast($date, $slotMinutes, $now);
@@ -1029,6 +1052,7 @@ class AppointmentController extends Controller
                     $eligibleBarberIds,
                     $occupiedIntervals,
                     $slotMinutes,
+                    $openSlotBarberIdsByDateAndTime[$date->toDateString().'|'.$slot['value']] ?? [],
                 );
             $slotAppointments = $appointmentsByTime->get($slot['value'], new Collection);
 
@@ -1118,10 +1142,22 @@ class AppointmentController extends Controller
         array $activeBarberIds,
         array $occupiedIntervals,
         int $slotMinutes,
+        array $explicitOpenSlotBarberIds,
     ): int {
         $available = 0;
 
         foreach ($activeBarberIds as $barberId) {
+            if (in_array($barberId, $explicitOpenSlotBarberIds, true)) {
+                $hasBookingAtSameStartTime = collect($occupiedIntervals[$barberId] ?? [])
+                    ->contains(fn (array $interval): bool => $interval['start'] === $slotMinutes);
+
+                if (! $hasBookingAtSameStartTime) {
+                    $available++;
+                }
+
+                continue;
+            }
+
             $isOccupied = false;
             foreach ($occupiedIntervals[$barberId] ?? [] as $interval) {
                 if ($slotMinutes >= $interval['start'] && $slotMinutes < $interval['end']) {
