@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { CheckCircle2, Mail } from "lucide-react";
+import { Check, CheckCircle2, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { DatePickerWithLabel } from "@/components/common/DatePickerWithLabel";
@@ -513,7 +513,18 @@ export function NewAppointmentForm() {
           <div className="space-y-2 rounded-lg bg-slate-50 p-4 text-sm">
             <Detail label="Name" value={fullname} /><Detail label="Email" value={email.toLowerCase()} /><Detail label="Contact" value={contactNumber} /><Detail label="Barber" value={barberName} /><Detail label="Service" value={serviceSummary} /><Detail label="Date" value={selectedDate?.toLocaleDateString() ?? "—"} /><Detail label="Time" value={timeSummary} /><Detail label="Bookings" value={mode === "single" ? "1" : String(slotCount)} /><Detail label="Total" value={`₱${total.toFixed(2)}`} />
           </div>
-          <p className="text-sm font-medium text-amber-700">Make sure the email is correct. Confirmation, rejection, and all schedule updates will be sent there.</p>
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+            <ul className="space-y-1.5">
+              <li className="flex gap-2">
+                <Check className="mt-0.5 size-4 shrink-0 text-amber-700" aria-hidden="true" />
+                <span>Make sure your email is correct. Booking updates will be sent there.</span>
+              </li>
+              <li className="flex gap-2">
+                <Check className="mt-0.5 size-4 shrink-0 text-amber-700" aria-hidden="true" />
+                <span>Check your Spam or Junk folder if the verification code does not arrive.</span>
+              </li>
+            </ul>
+          </div>
           <DialogFooter><Button type="button" variant="outline" disabled={loading} onClick={() => setConfirmationOpen(false)}>Edit Details</Button><Button type="button" disabled={loading || !pendingPayload} onClick={() => pendingPayload && void sendOtp(pendingPayload)}>{loading ? "Sending..." : "Send Verification Code"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
