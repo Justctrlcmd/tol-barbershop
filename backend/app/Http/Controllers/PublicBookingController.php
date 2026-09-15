@@ -146,15 +146,15 @@ class PublicBookingController extends Controller
             'email' => $validated['email'],
             'otp_hash' => Hash::make($otp),
             'payload' => $validated,
-            'expires_at' => now()->addMinutes(10),
-            'resend_available_at' => now()->addMinute(),
+            'expires_at' => now()->addMinutes(30),
+            'resend_available_at' => now()->addMinutes(2),
         ]);
 
         Notification::route('mail', $validated['email'])->notify(new BookingMailNotification([
             'subject' => 'Your TOL Barbershop booking verification code',
             'heading' => 'Verify Your Booking Email',
             'customerName' => $validated['fullname'],
-            'intro' => 'Enter this six-digit code on the booking page. The code expires in 10 minutes.',
+            'intro' => 'Enter this six-digit code on the booking page. The code expires in 30 minutes.',
             'highlight' => $otp,
             'details' => [],
             'footer' => "If you didn't request this booking, you can ignore this email.",
@@ -162,8 +162,8 @@ class PublicBookingController extends Controller
 
         return $this->success('Verification code sent.', [
             'request_token' => $requestToken,
-            'expires_in_seconds' => 600,
-            'resend_after_seconds' => 60,
+            'expires_in_seconds' => 1800,
+            'resend_after_seconds' => 120,
         ]);
     }
 
