@@ -147,7 +147,7 @@ class PublicBookingController extends Controller
             'otp_hash' => Hash::make($otp),
             'payload' => $validated,
             'expires_at' => now()->addMinutes(30),
-            'resend_available_at' => now()->addMinute(),
+            'resend_available_at' => now()->addMinutes(2),
         ]);
 
         Notification::route('mail', $validated['email'])->notify(new BookingMailNotification([
@@ -163,7 +163,7 @@ class PublicBookingController extends Controller
         return $this->success('Verification code sent.', [
             'request_token' => $requestToken,
             'expires_in_seconds' => 1800,
-            'resend_after_seconds' => 60,
+            'resend_after_seconds' => 120,
         ]);
     }
 

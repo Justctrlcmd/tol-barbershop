@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { Check, CheckCircle2, Mail } from "lucide-react";
 import { toast } from "sonner";
 
+import { TermsOfUseContent } from "@/app/(legal)/_components/TermsOfUseContent";
+import { PrivacyPolicyContent } from "@/app/(legal)/_components/PrivacyPolicyContent";
 import { DatePickerWithLabel } from "@/components/common/DatePickerWithLabel";
 import { InputWithLabel } from "@/components/common/InputWithLabel";
 import { SelectWithLabel } from "@/components/common/SelectWithLabel";
@@ -47,6 +48,59 @@ import { publicBookingSchema } from "@/validations/public-booking.validation";
 const REMEMBERED_DETAILS_KEY = "tol_public_booking_details";
 const REMEMBERED_DETAILS_TTL_MS = 90 * 24 * 60 * 60 * 1_000;
 const STORED_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const SESSION_KEY = "tol_public_booking_session";
+const SESSION_TTL_MS = 30 * 60 * 1_000;
+
+type PersistedBookingSession = {
+  payload: PublicBookingPayload;
+  request_token: string;
+  otp_expires_at: number;
+  saved_at: number;
+};
+
+function saveBookingSession(
+  payload: PublicBookingPayload,
+  requestToken: string,
+) {
+  const data: PersistedBookingSession = {
+    payload,
+    request_token: requestToken,
+    otp_expires_at: Date.now() + SESSION_TTL_MS,
+    saved_at: Date.now(),
+  };
+  window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(data));
+}
+
+function readBookingSession(): PersistedBookingSession | null {
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (
+      typeof parsed.request_token !== "string" ||
+      typeof parsed.otp_expires_at !== "number" ||
+      typeof parsed.saved_at !== "number" ||
+      Date.now() - parsed.saved_at > SESSION_TTL_MS
+    ) {
+      window.sessionStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return {
+      payload: parsed.payload as PublicBookingPayload,
+      request_token: parsed.request_token,
+      otp_expires_at: parsed.otp_expires_at,
+      saved_at: parsed.saved_at,
+    };
+  } catch {
+    window.sessionStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+}
+
+function clearBookingSession() {
+  window.sessionStorage.removeItem(SESSION_KEY);
+}
 
 type RememberedBookingDetails = {
   fullname: string;
@@ -156,6 +210,8 @@ export function NewAppointmentForm() {
   const [loading, setLoading] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [otpOpen, setOtpOpen] = useState(false);
+  const [termsDialogOpen, setTermsDialogOpen] = useState(false);
+  const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
   const [otp, setOtp] = useState("");
   const [requestToken, setRequestToken] = useState("");
   const [resendAt, setResendAt] = useState(0);
@@ -173,6 +229,8 @@ export function NewAppointmentForm() {
       Boolean(selectedTime) ||
       confirmationOpen ||
       otpOpen ||
+      termsDialogOpen ||
+      privacyDialogOpen ||
       loading ||
       pendingPayload !== null ||
       result !== null,
@@ -192,6 +250,42 @@ export function NewAppointmentForm() {
     setEmail(saved.email);
     setEmailConfirmation(saved.email);
     setContactNumber(saved.contactNumber);
+  }, []);
+
+  useEffect(() => {
+    const session = readBookingSession();
+    if (!session) return;
+
+    if (Date.now() > session.otp_expires_at) {
+      clearBookingSession();
+      return;
+    }
+
+    const p = session.payload;
+    setMode(p.mode);
+    setSelectedBarber(String(p.barber_user_id));
+    setSelectedService(p.mode === "single" ? String(p.appointments[0]?.service_id ?? "") : "");
+    setSelectedDate(new Date(p.appointment_date + "T00:00:00"));
+    setSelectedTime(p.mode === "single" ? formatTime12(p.appointments[0]?.appointment_time ?? "") : "");
+    setSlotCount(p.appointments.length || 2);
+    setSlotServices(p.appointments.map((a) => String(a.service_id)));
+    setSlotTimes(p.appointments.map((a) => formatTime12(a.appointment_time)));
+    setSlotNames(p.appointments.map((a) => a.customer_name ?? ""));
+    setFullname(p.fullname);
+    setEmail(p.email);
+    setEmailConfirmation(p.email_confirmation);
+    setContactNumber(p.contact_number);
+    setNotes(p.notes ?? "");
+    setTermsAccepted(p.terms_accepted);
+    setPrivacyAcknowledged(p.privacy_acknowledged);
+    setPendingPayload(p);
+    setRequestToken(session.request_token);
+    setResendAt(session.otp_expires_at);
+    setNow(Date.now());
+    setOtp("");
+    setOtpOpen(true);
+    setConfirmationOpen(false);
+    setHasUnsavedFormInput(false);
   }, []);
 
   useEffect(() => {
@@ -345,6 +439,7 @@ export function NewAppointmentForm() {
       setOtp("");
       setConfirmationOpen(false);
       setOtpOpen(true);
+      saveBookingSession(payload, response.request_token);
       toast.success("Verification code sent.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not send the verification code.");
@@ -371,6 +466,7 @@ export function NewAppointmentForm() {
       }
       setResult(booking);
       setOtpOpen(false);
+      clearBookingSession();
       rateLimit.reset();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The verification code could not be accepted.");
@@ -397,6 +493,7 @@ export function NewAppointmentForm() {
     setRequestToken("");
     setOtp("");
     setHasUnsavedFormInput(false);
+    clearBookingSession();
   }
 
   return (
@@ -498,8 +595,8 @@ export function NewAppointmentForm() {
               <InputWithLabel id="email-confirmation" type="email" label="Confirm Email" value={emailConfirmation} onChange={(event) => setEmailConfirmation(event.target.value)} maxLength={255} autoComplete="off" />
             </div>
             <div className="mt-5 space-y-3">
-              <ConsentRow checked={termsAccepted} onChange={setTermsAccepted}>I accept the <Link href="/terms-of-use" target="_blank" className="text-primary underline">Terms of Use</Link>.</ConsentRow>
-              <ConsentRow checked={privacyAcknowledged} onChange={setPrivacyAcknowledged}>I acknowledge the <Link href="/privacy-policy" target="_blank" className="text-primary underline">Privacy Policy</Link>.</ConsentRow>
+              <ConsentRow checked={termsAccepted} onChange={setTermsAccepted}>I accept the <button type="button" onClick={() => setTermsDialogOpen(true)} className="text-primary underline">Terms of Use</button>.</ConsentRow>
+              <ConsentRow checked={privacyAcknowledged} onChange={setPrivacyAcknowledged}>I acknowledge the <button type="button" onClick={() => setPrivacyDialogOpen(true)} className="text-primary underline">Privacy Policy</button>.</ConsentRow>
             </div>
           </section>
 
@@ -589,6 +686,30 @@ export function NewAppointmentForm() {
             </div>
           </div>
           <DialogFooter><Button type="button" className="w-full" onClick={resetForm}>Done</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={termsDialogOpen} onOpenChange={setTermsDialogOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Terms of Use</DialogTitle>
+            <DialogDescription>These terms apply to TOL Barbershop public booking, email updates, feedback, and website use.</DialogDescription>
+          </DialogHeader>
+          <div className="[&_h2]:text-lg [&_h2]:font-semibold [&_li]:pl-1 [&_p]:leading-7 [&_section]:border-b [&_section]:border-border [&_section]:py-5 [&_section:last-child]:border-b-0 [&_strong]:font-semibold [&_ul]:ml-5 [&_ul]:list-disc [&_ul]:space-y-2">
+            <TermsOfUseContent />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={privacyDialogOpen} onOpenChange={setPrivacyDialogOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Privacy Policy</DialogTitle>
+            <DialogDescription>This policy explains how TOL Barbershop handles personal information submitted through public booking, feedback, and staff administration.</DialogDescription>
+          </DialogHeader>
+          <div className="[&_h2]:text-lg [&_h2]:font-semibold [&_li]:pl-1 [&_p]:leading-7 [&_section]:border-b [&_section]:border-border [&_section]:py-5 [&_section:last-child]:border-b-0 [&_strong]:font-semibold [&_ul]:ml-5 [&_ul]:list-disc [&_ul]:space-y-2">
+            <PrivacyPolicyContent />
+          </div>
         </DialogContent>
       </Dialog>
     </div>
