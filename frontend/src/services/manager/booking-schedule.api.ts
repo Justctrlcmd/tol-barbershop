@@ -35,6 +35,29 @@ export type ScheduleOpenSlot = {
   created_at: string;
 };
 
+export type ScheduleBlockedSlot = {
+  id: number;
+  slot_date: string;
+  slot_time: string;
+  duration_minutes: number;
+  barber_user_id: number;
+  barber_name: string;
+  reason: string;
+  created_at: string;
+};
+
+export type ScheduleBlockedSlotOption = {
+  appointment_time: string;
+  duration_minutes: number;
+};
+
+export type ScheduleBlockedSlotOptions = {
+  time_slots: string[];
+  blocked_slots: Array<ScheduleBlockedSlotOption & { id: number }>;
+  occupied_slots: ScheduleBlockedSlotOption[];
+  open_slot_times: string[];
+};
+
 export type CreateScheduleOpenSlotData = {
   slot_date: string;
   barber_user_ids: number[];
@@ -43,7 +66,10 @@ export type CreateScheduleOpenSlotData = {
   period: "AM" | "PM";
 };
 
-export type ScheduleDay = BookingSchedule & { time_slots: string[] };
+export type ScheduleDay = BookingSchedule & {
+  time_slots: string[];
+  blocked_slots: Array<{ appointment_time: string; duration_minutes: number }>;
+};
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -79,6 +105,40 @@ export async function createScheduleOpenSlots(
 
 export async function deleteScheduleOpenSlot(id: number): Promise<void> {
   await authFetch(`${API}/schedule-open-slots/${id}`, { method: "DELETE" });
+}
+
+export async function getScheduleBlockedSlots(): Promise<ScheduleBlockedSlot[]> {
+  const response = await authFetch(`${API}/schedule-blocked-slots`);
+  return response.data?.data ?? response.data ?? [];
+}
+
+export async function getScheduleBlockedSlotOptions(
+  slotDate: string,
+  barberId: number,
+): Promise<ScheduleBlockedSlotOptions> {
+  const params = new URLSearchParams({
+    slot_date: slotDate,
+    barber_user_id: String(barberId),
+  });
+  const response = await authFetch(`${API}/schedule-blocked-slots/options?${params.toString()}`);
+  return response.data;
+}
+
+export async function createScheduleBlockedSlots(data: {
+  slot_date: string;
+  barber_user_id: number;
+  slot_times: string[];
+  reason: string;
+}): Promise<ScheduleBlockedSlot[]> {
+  const response = await authFetch(`${API}/schedule-blocked-slots`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return response.data?.data ?? response.data ?? [];
+}
+
+export async function deleteScheduleBlockedSlot(id: number): Promise<void> {
+  await authFetch(`${API}/schedule-blocked-slots/${id}`, { method: "DELETE" });
 }
 
 export async function getScheduleDay(

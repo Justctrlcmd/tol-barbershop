@@ -22,6 +22,7 @@ use App\Http\Controllers\PublicBookingController;
 use App\Http\Controllers\PublicBootstrapController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\ScheduleBlockedSlotController;
 use App\Http\Controllers\ScheduleOpenSlotController;
 use App\Http\Controllers\ServiceAddOnController;
 use App\Http\Controllers\ServiceController;
@@ -121,6 +122,15 @@ Route::prefix('v1')->group(function () {
             ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-write']);
         Route::delete('/schedule-open-slots/{scheduleOpenSlot}', [ScheduleOpenSlotController::class, 'destroy'])
             ->whereNumber('scheduleOpenSlot')
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-write']);
+        Route::get('/schedule-blocked-slots', [ScheduleBlockedSlotController::class, 'index'])
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-read']);
+        Route::get('/schedule-blocked-slots/options', [ScheduleBlockedSlotController::class, 'options'])
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-read']);
+        Route::post('/schedule-blocked-slots', [ScheduleBlockedSlotController::class, 'store'])
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-write']);
+        Route::delete('/schedule-blocked-slots/{scheduleBlockedSlot}', [ScheduleBlockedSlotController::class, 'destroy'])
+            ->whereNumber('scheduleBlockedSlot')
             ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-write']);
         Route::get('/closed-dates/activity', [ClosedDatesController::class, 'activity'])
             ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-read']);

@@ -45,11 +45,15 @@ import { getBarbers, type Barber } from "@/services/manager/barber.api";
 import {
   createScheduleOpenSlots,
   deleteScheduleOpenSlot,
+  createScheduleBlockedSlots,
+  deleteScheduleBlockedSlot,
   getBookingSchedule,
+  getScheduleBlockedSlots,
   getScheduleOpenSlots,
   updateBookingSchedule,
   type BookingSchedule,
   type ScheduleOpenSlot,
+  type ScheduleBlockedSlot,
   type UpdateBookingScheduleData,
 } from "@/services/manager/booking-schedule.api";
 import {
@@ -122,6 +126,7 @@ type TimeSelection = {
 
 type ScheduleException =
   | { kind: "open_slot"; sortKey: string; slot: ScheduleOpenSlot }
+  | { kind: "blocked_slot"; sortKey: string; slot: ScheduleBlockedSlot }
   | { kind: "closed_date"; sortKey: string; date: ClosedDate };
 
 function toTimeSelection(value: string): TimeSelection {
@@ -234,6 +239,7 @@ export function Slots() {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [openSlots, setOpenSlots] = useState<ScheduleOpenSlot[]>([]);
+  const [blockedSlots, setBlockedSlots] = useState<ScheduleBlockedSlot[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [showOpenSlotModal, setShowOpenSlotModal] = useState(false);
   const [openSlotDate, setOpenSlotDate] = useState<Date | undefined>();
@@ -249,6 +255,11 @@ export function Slots() {
   const scheduleExceptions = [
     ...openSlots.map((slot): ScheduleException => ({
       kind: "open_slot",
+      sortKey: `${slot.slot_date}T${slot.slot_time}`,
+      slot,
+    })),
+    ...blockedSlots.map((slot): ScheduleException => ({
+      kind: "blocked_slot",
       sortKey: `${slot.slot_date}T${slot.slot_time}`,
       slot,
     })),
@@ -348,14 +359,16 @@ export function Slots() {
 
   const fetchScheduleData = useCallback(async () => {
     try {
-      const [scheduleData, openSlotData, barberData] = await Promise.all([
+      const [scheduleData, openSlotData, blockedSlotData, barberData] = await Promise.all([
         getBookingSchedule(),
         getScheduleOpenSlots(),
+        getScheduleBlockedSlots(),
         getBarbers(),
       ]);
       setSchedule(scheduleData);
       setScheduleDraft(toScheduleDraft(scheduleData));
       setOpenSlots(openSlotData);
+      setBlockedSlots(blockedSlotData);
       setBarbers(barberData.filter((barber) => barber.is_active !== false));
     } catch (error) {
       console.error("Error fetching schedule configuration:", error);
@@ -391,6 +404,30 @@ export function Slots() {
 
       if (activityResponse && activityResponse.data) {
         const logs = activityResponse.data.map((activity: ClosedDateActivity) => {
+          if (activity.activity_type === "blocked_slot") {
+            const slotDate = activity.slot_date
+              ? formatDisplayDate(activity.slot_date)
+              : "an unknown date";
+            const slotTime = activity.slot_time
+              ? formatScheduleTime(activity.slot_time)
+              : "an unknown time";
+            const subject = `${activity.barber_name ?? "Barber"}'s schedule`;
+
+            return {
+              title: activity.action === "unblocked"
+                ? `${subject} time slot was unblocked`
+                : `${subject} time slot was blocked`,
+              reason: `${activity.reason ?? "Barber time slot updated"} for ${slotDate} at ${slotTime}`,
+              actor: activity.actor_name ?? "",
+              actorLabel: activity.action === "unblocked" ? "Unblocked by" : "Blocked by",
+              time: new Date(activity.created_at).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              }),
+            };
+          }
+
           if (activity.activity_type === "open_slot") {
             const barberSubject = `${activity.barber_name ?? "Barber"}'s open slot`;
             const slotDate = activity.slot_date
@@ -475,6 +512,23 @@ export function Slots() {
 
   const handleClosedDateSubmit = async (data: ClosedDateSchemaFormValues) => {
     try {
+      if (
+        data.closure_scope === "barber"
+        && data.barber_closure_mode === "time_slots"
+        && data.barber_user_id
+      ) {
+        await createScheduleBlockedSlots({
+          slot_date: formatDateToLocal(data.date_closed!),
+          barber_user_id: data.barber_user_id,
+          slot_times: data.blocked_slot_times,
+          reason: data.reason,
+        });
+        await fetchAllData();
+        closeClosedDateModal();
+        toast.success("Barber time slots blocked successfully.");
+        return;
+      }
+
       await createClosedDate({
         date_closed: formatDateToLocal(data.date_closed!),
         closure_scope: data.closure_scope,
@@ -497,6 +551,17 @@ export function Slots() {
     } catch (error) {
       console.error("Error creating closed date:", error);
       toast.error(error instanceof Error ? error.message : "Could not add closed date. Please try again.");
+    }
+  };
+
+  const handleDeleteBlockedSlot = async (id: number) => {
+    try {
+      await deleteScheduleBlockedSlot(id);
+      setBlockedSlots((current) => current.filter((slot) => slot.id !== id));
+      await fetchActivityLogs(1);
+      toast.success("Barber time slot unblocked.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not unblock time slot.");
     }
   };
 
@@ -609,7 +674,7 @@ export function Slots() {
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-semibold">Schedule Exceptions</p>
-              <p className="text-gray-700 text-sm">Close a date or add a custom open slot</p>
+              <p className="text-gray-700 text-sm">Close a date, block barber time, or add a custom open slot</p>
             </div>
             <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-2">
               <button
@@ -658,6 +723,32 @@ export function Slots() {
                           onClick={() => void handleDeleteOpenSlot(slot.id)}
                           className="rounded p-1 text-emerald-700 hover:bg-emerald-100"
                           aria-label={`Remove open slot for ${slot.barber_name}`}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  if (exception.kind === "blocked_slot") {
+                    const { slot } = exception;
+
+                    return (
+                      <div
+                        key={`blocked-slot-${slot.id}`}
+                        className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 p-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800">
+                            {formatDisplayDate(slot.slot_date)} at {formatScheduleTime(slot.slot_time)}
+                          </p>
+                          <p className="truncate text-xs text-gray-500">{slot.barber_name} · {slot.reason}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteBlockedSlot(slot.id)}
+                          className="rounded p-1 text-amber-700 hover:bg-amber-100"
+                          aria-label={`Unblock ${slot.barber_name} at ${formatScheduleTime(slot.slot_time)}`}
                         >
                           <Trash2 className="size-3.5" />
                         </button>

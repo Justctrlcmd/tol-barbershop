@@ -64,6 +64,13 @@ class SettingsController extends Controller
                 $validated['date'],
                 (int) $validated['barber_id'],
             ),
+            'blocked_slots' => $this->scheduleService->blockedSlotsFor(
+                $validated['date'],
+                (int) $validated['barber_id'],
+            )->map(fn ($slot): array => [
+                'appointment_time' => substr((string) $slot->slot_time, 0, 5),
+                'duration_minutes' => (int) $slot->duration_minutes,
+            ])->values()->all(),
         ]);
     }
 

@@ -33,10 +33,10 @@ export interface PaginatedClosedDates {
 
 export type ClosedDateActivity = {
   id: number;
-  activity_type: "closed_date" | "open_slot";
+  activity_type: "closed_date" | "open_slot" | "blocked_slot";
   closed_date_id: number | null;
   schedule_open_slot_id: number | null;
-  action: "closed" | "reopened" | "added" | "removed";
+  action: "closed" | "reopened" | "blocked" | "unblocked" | "added" | "removed";
   closure_scope: "shop" | "barber";
   date_closed: string | null;
   slot_date: string | null;

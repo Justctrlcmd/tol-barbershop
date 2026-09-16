@@ -17,7 +17,7 @@ import {
   type Service,
 } from "@/services/shared/appointment.api";
 import { getScheduleDay } from "@/services/manager/booking-schedule.api";
-import { formatTime12 } from "@/lib/time-slots";
+import { formatTime12, isTimeSlotUnavailable } from "@/lib/time-slots";
 import {
   walkinSchema,
   type WalkinSchemaValues,
@@ -104,13 +104,14 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
         setTimeOptions(day.time_slots.map((time) => ({
           value: time,
           label: formatTime12(time),
+          disabled: isTimeSlotUnavailable(time, Number(selectedService?.duration ?? 60), [], [], day.blocked_slots),
         })));
       })
       .catch(() => {
         setTimeOptions([]);
         toast.error("Failed to load available schedule times");
       });
-  }, [selectedBarberId, selectedDateValue]);
+  }, [selectedBarberId, selectedDateValue, selectedService?.duration]);
 
   const onFormInvalid: SubmitErrorHandler<WalkinSchemaValues> = () => {
     toast.error("All fields are required");

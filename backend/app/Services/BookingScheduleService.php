@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BookingSchedule;
 use App\Models\ClosedDates;
+use App\Models\ScheduleBlockedSlot;
 use App\Models\ScheduleOpenSlot;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -114,6 +115,22 @@ class BookingScheduleService
             return [];
         }
 
+        $times = $this->candidateStartTimesFor($date, $barberUserId);
+        $blockedSlots = $this->blockedSlotsFor($date, $barberUserId);
+
+        return collect($times)
+            ->reject(fn (string $time): bool => $this->timeMatchesBlockedSlot($time, $blockedSlots))
+            ->values()
+            ->all();
+    }
+
+    public function candidateStartTimesFor(string|CarbonInterface $date, int $barberUserId): array
+    {
+        $date = $this->date($date);
+        if ($this->isExplicitlyClosed($date, $barberUserId)) {
+            return [];
+        }
+
         $schedule = $this->forDate($date);
         $times = $this->isRecurringOpenDate($date, $schedule)
             ? $this->standardStartTimes($schedule)
@@ -125,6 +142,47 @@ class BookingScheduleService
             ->sortBy(fn (string $time): int => $this->timeToMinutes($time))
             ->values()
             ->all();
+    }
+
+    /**
+     * Return every regular time between opening and closing, plus custom and
+     * date-specific open times, for the independent barber closure picker.
+     */
+    public function blockableStartTimesFor(string|CarbonInterface $date, int $barberUserId): array
+    {
+        $date = $this->date($date);
+        if ($this->isExplicitlyClosed($date, $barberUserId)) {
+            return [];
+        }
+
+        $schedule = $this->forDate($date);
+        $times = $this->isRecurringOpenDate($date, $schedule)
+            ? $this->allOperatingStartTimes($schedule)
+            : [];
+        $customTimes = $this->openSlotTimesFor($date, $barberUserId);
+
+        return collect([...$times, ...$customTimes])
+            ->unique()
+            ->sortBy(fn (string $time): int => $this->timeToMinutes($time))
+            ->values()
+            ->all();
+    }
+
+    public function blockedSlotsFor(
+        string|CarbonInterface $date,
+        int $barberUserId,
+        bool $lock = false,
+    ): Collection {
+        $query = ScheduleBlockedSlot::query()
+            ->whereDate('slot_date', $this->date($date)->toDateString())
+            ->where('barber_user_id', $barberUserId)
+            ->orderBy('slot_time');
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->get();
     }
 
     public function openSlotTimesFor(
@@ -260,5 +318,36 @@ class BookingScheduleService
     private function shopTimezone(): string
     {
         return (string) config('app.shop_timezone', 'Asia/Manila');
+    }
+
+    private function timeMatchesBlockedSlot(string $time, Collection $blockedSlots): bool
+    {
+        $normalizedTime = $this->normalizeTime($time);
+
+        return $blockedSlots->contains(function (ScheduleBlockedSlot $slot) use ($normalizedTime): bool {
+            return substr((string) $slot->slot_time, 0, 5) === $normalizedTime;
+        });
+    }
+
+    private function allOperatingStartTimes(BookingSchedule|array $schedule): array
+    {
+        $opening = $this->timeToMinutes((string) $this->value($schedule, 'opening_time'));
+        $closing = $this->timeToMinutes((string) $this->value($schedule, 'closing_time'));
+        $customOpenTimes = $this->customOpenTimes($schedule);
+        $times = [];
+
+        for ($minutes = $opening; $minutes <= $closing; $minutes += self::SLOT_INTERVAL_MINUTES) {
+            $times[] = $this->minutesToTime($minutes);
+        }
+        $closingTime = $this->minutesToTime($closing);
+        if (! in_array($closingTime, $times, true)) {
+            $times[] = $closingTime;
+        }
+
+        return collect([...$times, ...$customOpenTimes])
+            ->unique()
+            ->sortBy(fn (string $time): int => $this->timeToMinutes($time))
+            ->values()
+            ->all();
     }
 }

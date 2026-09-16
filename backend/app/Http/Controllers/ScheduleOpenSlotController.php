@@ -90,6 +90,15 @@ class ScheduleOpenSlotController extends Controller
                             'slot_date' => "{$barbers->get($barberId)->fullname} is closed on this date.",
                         ]);
                     }
+
+                    $blocked = $this->scheduleService->blockedSlotsFor($validated['slot_date'], $barberId, true);
+                    if ($blocked->contains(
+                        fn ($blockedSlot): bool => substr((string) $blockedSlot->slot_time, 0, 5) === $slotTime,
+                    )) {
+                        throw ValidationException::withMessages([
+                            'slot_date' => "{$barbers->get($barberId)->fullname} has this time blocked.",
+                        ]);
+                    }
                 }
 
                 $duplicates = ScheduleOpenSlot::query()

@@ -8,6 +8,7 @@ use App\Models\Appointment;
 use App\Models\BookingVerification;
 use App\Models\ClosedDates;
 use App\Models\Notification as StaffNotification;
+use App\Models\ScheduleBlockedSlot;
 use App\Models\Service;
 use App\Models\User;
 use App\Notifications\BookingMailNotification;
@@ -117,6 +118,13 @@ class PublicBookingController extends Controller
                 $validated['date'],
                 (int) $validated['barber_id'],
             ),
+            'blocked_slots' => $this->scheduleService->blockedSlotsFor(
+                $validated['date'],
+                (int) $validated['barber_id'],
+            )->map(fn (ScheduleBlockedSlot $slot): array => [
+                'appointment_time' => substr((string) $slot->slot_time, 0, 5),
+                'duration_minutes' => (int) $slot->duration_minutes,
+            ])->values()->all(),
         ]);
     }
 

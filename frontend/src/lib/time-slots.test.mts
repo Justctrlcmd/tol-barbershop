@@ -26,3 +26,26 @@ test("an explicit open slot is unavailable after it is booked", () => {
     true,
   );
 });
+
+test("a blocked time only removes its matching start time", () => {
+  assert.equal(
+    isTimeSlotUnavailable(
+      "13:00",
+      60,
+      [],
+      [],
+      [{ appointment_time: "12:30", duration_minutes: 60 }],
+    ),
+    false,
+  );
+  assert.equal(
+    isTimeSlotUnavailable(
+      "12:30",
+      60,
+      [],
+      [],
+      [{ appointment_time: "12:30", duration_minutes: 60 }],
+    ),
+    true,
+  );
+});
