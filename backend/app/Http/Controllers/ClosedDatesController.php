@@ -138,8 +138,28 @@ class ClosedDatesController extends Controller
             'actor_name_snapshot',
             'created_at',
         ]);
+        $blockedSlotActivities = DB::table('schedule_blocked_slot_activities')->select([
+            'id',
+            DB::raw("'blocked_slot' as activity_type"),
+            DB::raw('NULL as closed_date_id'),
+            DB::raw('NULL as schedule_open_slot_id'),
+            'action',
+            DB::raw("'barber' as closure_scope"),
+            DB::raw('NULL as date_closed'),
+            'slot_date',
+            'slot_time',
+            'barber_user_id',
+            'barber_name_snapshot',
+            'reason',
+            'actor_user_id',
+            'actor_name_snapshot',
+            'created_at',
+        ]);
         $activities = DB::query()
-            ->fromSub($closedDateActivities->unionAll($openSlotActivities), 'schedule_activities')
+            ->fromSub(
+                $closedDateActivities->unionAll($openSlotActivities)->unionAll($blockedSlotActivities),
+                'schedule_activities',
+            )
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate($perPage);

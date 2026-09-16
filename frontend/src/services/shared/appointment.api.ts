@@ -205,6 +205,7 @@ export type AppointmentAvailability = {
   occupied_slots: OccupiedAppointmentSlot[];
   time_slots: string[];
   open_slot_times: string[];
+  blocked_slots: OccupiedAppointmentSlot[];
 };
 
 export const getActiveBarbers = async (): Promise<Barber[]> => {
@@ -438,6 +439,7 @@ export const getUnavailableSlots = async (
     occupied_slots: response.data,
     time_slots: response.time_slots,
     open_slot_times: response.open_slot_times,
+    blocked_slots: response.blocked_slots ?? [],
   };
 };
 

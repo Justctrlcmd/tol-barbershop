@@ -90,6 +90,23 @@ class AppointmentBookingService
 
         $this->assertDateAvailableAndLock($barberUserId, $appointmentDate);
 
+        $blockedSlots = $this->scheduleService->blockedSlotsFor(
+            $appointmentDate,
+            $barberUserId,
+            true,
+        );
+        foreach ($parsedSlots as $slot) {
+            $time = $this->scheduleService->normalizeTime($slot['appointment_time']);
+            $isBlocked = $blockedSlots->contains(
+                fn ($blocked): bool => $this->scheduleService->normalizeTime((string) $blocked->slot_time) === $time,
+            );
+            if ($isBlocked) {
+                throw ValidationException::withMessages([
+                    $slot['field'] => 'The selected time is blocked for this barber.',
+                ]);
+            }
+        }
+
         $allowedTimes = $this->scheduleService->startTimesFor($appointmentDate, $barberUserId);
         if ($allowedTimes === []) {
             throw ValidationException::withMessages([

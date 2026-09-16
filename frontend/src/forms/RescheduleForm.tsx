@@ -116,6 +116,7 @@ export function RescheduleForm({
   const [barbers, setBarbers] = useState<{ value: string; label: string }[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [occupiedSlots, setOccupiedSlots] = useState<OccupiedAppointmentSlot[]>([]);
+  const [blockedSlots, setBlockedSlots] = useState<OccupiedAppointmentSlot[]>([]);
   const [explicitOpenSlotTimes, setExplicitOpenSlotTimes] = useState<string[]>([]);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [timeSlots, setTimeSlots] = useState<{ value: string; label: string }[]>([]);
@@ -185,6 +186,7 @@ export function RescheduleForm({
     const fetchUnavailableTimes = async () => {
       if (!selectedBarber || !selectedDate) {
         setOccupiedSlots([]);
+        setBlockedSlots([]);
         return;
       }
       try {
@@ -199,6 +201,7 @@ export function RescheduleForm({
           appointment.id,
         );
         setOccupiedSlots(availability.occupied_slots);
+        setBlockedSlots(availability.blocked_slots);
         setExplicitOpenSlotTimes(availability.open_slot_times);
         setTimeSlots(availability.time_slots.map((time) => ({
           value: formatTime12(time),
@@ -207,6 +210,7 @@ export function RescheduleForm({
       } catch {
         toast.error("Failed to check availability");
         setOccupiedSlots([]);
+        setBlockedSlots([]);
         setExplicitOpenSlotTimes([]);
       } finally {
         setIsCheckingAvailability(false);
@@ -224,12 +228,13 @@ export function RescheduleForm({
         Number(appointment.duration_minutes ?? 60),
         occupiedSlots,
         explicitOpenSlotTimes,
+        blockedSlots,
       ) ||
         (selectedDate && isPastTime(selectedTime, new Date(selectedDate))))
     ) {
       setValue("appointment_time", "");
     }
-  }, [selectedTime, explicitOpenSlotTimes, occupiedSlots, selectedDate, setValue, appointment.duration_minutes]);
+  }, [selectedTime, blockedSlots, explicitOpenSlotTimes, occupiedSlots, selectedDate, setValue, appointment.duration_minutes]);
 
   const onFormInvalid: SubmitErrorHandler<RescheduleFormValues> = () => {
     toast.error("All fields are required");
@@ -350,6 +355,7 @@ export function RescheduleForm({
                   setValue("appointment_date", "");
                   setValue("appointment_time", "");
                   setOccupiedSlots([]);
+                  setBlockedSlots([]);
                 }}
                 disabled={loadingData || isSubmitting}
               />
@@ -402,6 +408,7 @@ export function RescheduleForm({
                     Number(appointment.duration_minutes ?? 60),
                     occupiedSlots,
                     explicitOpenSlotTimes,
+                    blockedSlots,
                   ) ||
                   isPastTime(time.value, parsedSelectedDate),
               }))}
