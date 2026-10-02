@@ -289,7 +289,7 @@ export function ClosedDateForm({
           {isBarberDayOff && barberClosureMode === "time_slots" && (
             <div className="relative space-y-2">
               <label className="text-sm font-medium text-gray-700">Blocked time slots</label>
-              <Popover>
+              <Popover modal>
                 <PopoverTrigger asChild>
                   <Button type="button" variant="outline" className="w-full justify-between border-gray-300 py-5 font-normal">
                     <span className={blockedSlotTimes.length ? "text-foreground" : "text-muted-foreground"}>
@@ -298,13 +298,13 @@ export function ClosedDateForm({
                     <ChevronDown className="size-4 text-muted-foreground" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="start" className="z-[70] w-[var(--radix-popover-trigger-width)] p-2">
+                <PopoverContent align="start" className="z-[70] max-h-[min(15rem,var(--radix-popover-content-available-height))] w-[var(--radix-popover-trigger-width)] overflow-y-auto overscroll-contain p-2">
                   {loadingSlotOptions ? (
                     <p className="p-2 text-sm text-gray-500">Loading available times...</p>
                   ) : slotOptions.length === 0 ? (
                     <p className="p-2 text-sm text-gray-500">No schedule times available.</p>
                   ) : (
-                    <div className="grid max-h-56 gap-1 overflow-y-auto sm:grid-cols-2">
+                    <div className="grid gap-1 sm:grid-cols-2">
                       {slotOptions.map((time) => {
                         const disabled = isPastSlot(time)
                           || existingBlockedSlots.some((slot) => slot.appointment_time === time)
