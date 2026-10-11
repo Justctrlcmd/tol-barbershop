@@ -337,10 +337,12 @@ class BookingScheduleService
         $times = [];
 
         for ($minutes = $opening; $minutes <= $closing; $minutes += self::SLOT_INTERVAL_MINUTES) {
-            $times[] = $this->minutesToTime($minutes);
+            if ($minutes !== 720) {
+                $times[] = $this->minutesToTime($minutes);
+            }
         }
         $closingTime = $this->minutesToTime($closing);
-        if (! in_array($closingTime, $times, true)) {
+        if ($closing !== 720 && ! in_array($closingTime, $times, true)) {
             $times[] = $closingTime;
         }
 

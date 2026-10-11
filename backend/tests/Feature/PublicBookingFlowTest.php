@@ -70,8 +70,8 @@ it('creates a pending public booking only after the emailed otp is verified', fu
     $request = $this->postJson('/api/v1/public-booking/request-otp', publicBookingPayload($barber, $service));
 
     $request->assertOk()
-        ->assertJsonPath('data.expires_in_seconds', 600)
-        ->assertJsonPath('data.resend_after_seconds', 60);
+        ->assertJsonPath('data.expires_in_seconds', 1800)
+        ->assertJsonPath('data.resend_after_seconds', 120);
     expect(Appointment::count())->toBe(0);
 
     Notification::assertSentOnDemand(

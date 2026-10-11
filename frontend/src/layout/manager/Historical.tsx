@@ -43,6 +43,8 @@ type Row = {
   time: string;
   status: AppointmentStatus;
   price: number;
+  discountAmount: number;
+  discountLabel: string | null;
   addOns: { name: string | null; price: number | string }[];
   cancellation_reason: string | null;
   emailDelivery: {
@@ -87,6 +89,8 @@ export function Historical() {
         time: formatTime12(appointment.appointment_time),
         status: appointment.status,
         price: Number(appointment.price) || 0,
+        discountAmount: Number(appointment.discount_amount ?? 0),
+        discountLabel: Number(appointment.discount_amount ?? 0) > 0 ? "Discount" : null,
         addOns: appointment.add_ons ?? [],
         cancellation_reason: appointment.cancellation_reason,
         emailDelivery: appointment.latest_email_delivery ?? null,
@@ -185,6 +189,7 @@ export function Historical() {
                 <p className="text-xs text-gray-500">
                   {row.date} · {row.time}
                 </p>
+                {row.discountLabel && <p className="text-xs text-green-700">{row.discountLabel}: −₱{row.discountAmount.toFixed(2)}</p>}
                 {row.emailDelivery ? (
                   <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
                     <span className="capitalize">
@@ -261,7 +266,7 @@ export function Historical() {
                     </TableCell>
                     <TableCell>{row.date}</TableCell>
                     <TableCell>{row.time}</TableCell>
-                    <TableCell>₱{row.price.toFixed(2)}</TableCell>
+                    <TableCell><div>₱{row.price.toFixed(2)}</div>{row.discountLabel && <div className="mt-1 text-xs text-green-700">{row.discountLabel}: −₱{row.discountAmount.toFixed(2)}</div>}</TableCell>
                     <TableCell>
                       <div className="relative inline-block">
                         <AppointmentStatusBadge status={row.status} />

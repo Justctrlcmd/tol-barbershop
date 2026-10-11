@@ -178,6 +178,11 @@ class AppointmentNotificationService
                 ->implode(', ');
         }
 
+        if ((float) $appointment->discount_amount > 0) {
+            $details['Subtotal'] = '₱'.number_format((float) $appointment->subtotal, 2);
+            $details['Discount'] = '−₱'.number_format((float) $appointment->discount_amount, 2);
+        }
+
         return $details;
     }
 

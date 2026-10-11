@@ -20,6 +20,10 @@ class Appointment extends Model
         'appointment_time',
         'duration_minutes',
         'price',
+        'subtotal',
+        'discount_type',
+        'discount_amount',
+        'discount_applied_by_user_id',
         'status',
         'active_slot_key',
         'is_walkin',
@@ -50,6 +54,8 @@ class Appointment extends Model
         'cancelled_at' => 'datetime',
         'rejected_at' => 'datetime',
         'price' => 'decimal:2',
+        'subtotal' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
         'is_walkin' => 'boolean',
     ];
 

@@ -64,6 +64,10 @@ class AppointmentResource extends JsonResource
             'duration_minutes' => $this->duration_minutes,
 
             'price' => $this->price,
+            'subtotal' => $this->subtotal ?? $this->price,
+            'discount_type' => $this->discount_type,
+            'discount_amount' => $this->discount_amount,
+            'discount_applied_by_user_id' => $this->discount_applied_by_user_id,
             'status' => $this->status,
             'is_walkin' => (bool) $this->is_walkin,
             'booking_source' => $this->booking_source,

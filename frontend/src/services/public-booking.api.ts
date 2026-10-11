@@ -15,6 +15,12 @@ export type PublicService = {
   is_active: boolean;
 };
 
+export type PublicAddOn = {
+  id: number;
+  name: string;
+  price: number | string;
+};
+
 export type PublicBookingSettings = {
   open_day_from: number;
   open_day_to: number;
@@ -53,6 +59,7 @@ export type PublicClosedDate = {
 };
 
 export type PublicBookingBootstrap = {
+  add_ons: PublicAddOn[];
   barbers: PublicBarber[];
   services: PublicService[];
   closed_dates: PublicClosedDate[];
@@ -74,6 +81,7 @@ export type PublicBookingPayload = {
     customer_name: string | null;
     service_id: number;
     appointment_time: string;
+    add_on_ids?: number[];
   }>;
 };
 

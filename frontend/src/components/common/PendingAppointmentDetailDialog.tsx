@@ -250,6 +250,7 @@ export function PendingAppointmentDetailDialog({
                         </p>
                       </div>
                     </div>
+                    {(appointment.add_ons ?? []).length > 0 && <div className="mt-3 text-sm text-muted-foreground"><p className="font-medium">Add-ons</p>{appointment.add_ons!.map((item) => <p key={item.id}>{displayString(item.name, "Add-on")} · ₱{Number(item.price).toFixed(2)}</p>)}</div>}
                   </article>
                 ))}
               </div>

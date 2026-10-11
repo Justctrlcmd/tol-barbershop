@@ -31,6 +31,10 @@ import {
 import { GroupPendingCard } from "@/components/common/GroupPendingCard";
 import { AppointmentAddOnDialog } from "@/components/common/AppointmentAddOnDialog";
 import dynamic from "next/dynamic";
+const CompleteBookingDialog = dynamic(
+  () => import("@/components/common/CompleteBookingDialog").then((mod) => mod.CompleteBookingDialog),
+  { ssr: false },
+);
 const PendingAppointmentDetailDialog = dynamic(
   () =>
     import("@/components/common/PendingAppointmentDetailDialog").then(
@@ -118,7 +122,7 @@ function normalizeToHHmm(time: string): string {
 }
 
 function getTodayDate(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
 type PendingUnit =
@@ -573,6 +577,7 @@ export function Appointment() {
   const [pastDueOpen, setPastDueOpen] = useState(false);
   const confirmedPageSize = 10;
   const [confirmActionOpen, setConfirmActionOpen] = useState(false);
+  const [completionAppointment, setCompletionAppointment] = useState<Appointment | null>(null);
   const [confirmActionTarget, setConfirmActionTarget] = useState<{
     appt: Appointment;
     status: "completed" | "no_show";
@@ -727,6 +732,7 @@ export function Appointment() {
     appt: Appointment,
     status: "confirmed" | "cancelled" | "rejected" | "completed" | "no_show",
     cancellationReason?: string,
+    discountAmount?: number,
   ): Promise<boolean> => {
     try {
       const bookingCustomerId = appt.customer.id;
@@ -756,6 +762,7 @@ export function Appointment() {
         notes: appt.notes,
         cancellation_reason: normalizedCancellationReason,
         status,
+        ...(status === "completed" ? { discount_amount: discountAmount ?? 0 } : {}),
       };
 
       const validation = updateAppointmentSchema.safeParse(payload);
@@ -1161,6 +1168,7 @@ export function Appointment() {
                                       <AppointmentRow
                                         appt={appt}
                                         onStatusChange={(item, status) => {
+                                          if (status === "completed") { setCompletionAppointment(item); return; }
                                           setConfirmActionTarget({ appt: item, status });
                                           setConfirmActionOpen(true);
                                         }}
@@ -1288,6 +1296,7 @@ export function Appointment() {
                                         key={appt.id}
                                         appt={appt}
                                         onStatusChange={(item, status) => {
+                                          if (status === "completed") { setCompletionAppointment(item); return; }
                                           setConfirmActionTarget({ appt: item, status });
                                           setConfirmActionOpen(true);
                                         }}
@@ -1460,6 +1469,8 @@ export function Appointment() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {completionAppointment && <CompleteBookingDialog key={completionAppointment.id} appointment={completionAppointment} onClose={() => setCompletionAppointment(null)} onConfirm={(discount) => runUpdate(completionAppointment, "completed", undefined, discount)} />}
 
       <Dialog
         open={batchRejectDialogOpen}

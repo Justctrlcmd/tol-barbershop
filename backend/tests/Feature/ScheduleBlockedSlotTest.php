@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\BookingCustomer;
+use App\Models\BookingSchedule;
 use App\Models\ScheduleBlockedSlot;
 use App\Models\ScheduleBlockedSlotActivity;
 use App\Models\ScheduleOpenSlot;
@@ -111,12 +112,59 @@ test('custom and regular barber times can be blocked independently', function ()
     $options = $this->getJson(
         "/api/v1/schedule-blocked-slots/options?slot_date=2026-09-09&barber_user_id={$barber->id}",
     )->assertOk();
-    expect($options->json('data.time_slots'))->toContain('12:00', '12:30', '13:00');
+    expect($options->json('data.time_slots'))
+        ->toContain('12:30', '13:00')
+        ->not->toContain('12:00');
 
     expect(ScheduleBlockedSlot::where('barber_user_id', $barber->id)->pluck('slot_time')->map(
         fn (string $time): string => substr($time, 0, 5),
     )->all())->toBe(['12:30', '13:00']);
 });
+
+test('noon cannot be blocked without a custom override', function (string $closingTime) {
+    Sanctum::actingAs(blockedSlotUser('manager'));
+    $barber = blockedSlotUser('barber');
+    BookingSchedule::query()->update(['closing_time' => $closingTime]);
+
+    $options = $this->getJson(
+        "/api/v1/schedule-blocked-slots/options?slot_date=2026-09-08&barber_user_id={$barber->id}",
+    )->assertOk();
+    expect($options->json('data.time_slots'))->not->toContain('12:00');
+
+    $this->postJson('/api/v1/schedule-blocked-slots', [
+        'slot_date' => '2026-09-08',
+        'barber_user_id' => $barber->id,
+        'slot_times' => ['12:00'],
+        'reason' => 'Noon slot',
+    ])->assertUnprocessable()->assertJsonValidationErrors('slot_times');
+})->with(['19:00', '12:00']);
+
+test('custom noon overrides appear in block options and public availability', function (bool $dateSpecific) {
+    $manager = blockedSlotUser('manager');
+    $barber = blockedSlotUser('barber');
+    Sanctum::actingAs($manager);
+
+    if ($dateSpecific) {
+        ScheduleOpenSlot::create([
+            'slot_date' => '2026-09-08',
+            'slot_time' => '12:00',
+            'barber_user_id' => $barber->id,
+            'created_by_user_id' => $manager->id,
+        ]);
+    } else {
+        BookingSchedule::query()->update(['custom_open_times' => ['12:00']]);
+    }
+
+    $options = $this->getJson(
+        "/api/v1/schedule-blocked-slots/options?slot_date=2026-09-08&barber_user_id={$barber->id}",
+    )->assertOk();
+    expect($options->json('data.time_slots'))->toContain('12:00');
+
+    $availability = $this->getJson(
+        "/api/v1/public-booking/available-slots?barber_id={$barber->id}&date=2026-09-08",
+    )->assertOk();
+    expect($availability->json('time_slots'))->toContain('12:00');
+})->with([false, true]);
 
 test('blocked barber start time cannot match a custom open slot', function () {
     $manager = blockedSlotUser('manager');

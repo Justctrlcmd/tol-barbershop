@@ -9,6 +9,9 @@ const memberSchema = z.object({
     .nullable(),
   service_id: z.number().int().positive(),
   appointment_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  add_on_ids: z.array(z.number().int().positive()).max(50)
+    .refine((ids) => new Set(ids).size === ids.length, "Select each add-on once")
+    .optional(),
 });
 
 export const publicBookingSchema = z
