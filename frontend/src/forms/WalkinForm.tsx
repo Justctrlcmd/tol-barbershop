@@ -9,6 +9,8 @@ import { InputWithLabel } from "@/components/common/InputWithLabel";
 import { SelectWithLabel } from "@/components/common/SelectWithLabel";
 import { TextAreaWithLabel } from "@/components/common/TextAreaWithLabel";
 import { DatePickerWithLabel } from "@/components/common/DatePickerWithLabel";
+import { DiscountInput } from "@/components/common/DiscountInput";
+import { getDiscountError } from "@/validations/discount.validation";
 import {
   getActiveBarbers,
   getActiveServices,
@@ -57,10 +59,12 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
       price: 0,
       duration_minutes: null,
       notes: "",
+      discount_amount: 0,
     },
   });
 
   const selectedTime = useWatch({ control, name: "appointment_time" });
+  const discountAmount = useWatch({ control, name: "discount_amount" }) ?? 0;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -126,6 +130,7 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
         duration_minutes: data.duration_minutes ?? undefined,
         notes: data.notes ? sanitizeText(data.notes) : null,
         status: "completed",
+        discount_amount: data.discount_amount ?? 0,
         is_walkin: true,
         appointment_date: data.appointment_date,
         appointment_time: data.appointment_time,
@@ -135,6 +140,7 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
       toast.success("Completed walk-in successfully");
       setSelectedDate(undefined);
       reset({
+        discount_amount: 0,
         customer_name: "",
         service_id: 0,
         barber_user_id: 0,
@@ -222,9 +228,10 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
               label: service.name,
             }))}
             value={selectedServiceId > 0 ? String(selectedServiceId) : ""}
-            onValueChange={(value) =>
-              setValue("service_id", Number(value), { shouldValidate: true })
-            }
+            onValueChange={(value) => {
+              setValue("service_id", Number(value), { shouldValidate: true });
+              setValue("discount_amount", 0);
+            }}
           />
           {errors.service_id && (
             <p className="absolute left-0 top-full text-red-500 text-xs">
@@ -296,17 +303,18 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-gray-200 pt-4 md:col-span-2">
+        <div className="md:col-span-2"><DiscountInput value={discountAmount} onChange={(value) => setValue("discount_amount", value, { shouldValidate: true })} subtotal={selectedPrice} disabled={isSubmitting} /></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4 md:col-span-2" aria-live="polite">
           <p className="text-lg font-semibold text-gray-900">
             Total: ₱
-            {selectedPrice.toLocaleString(undefined, {
+            {Math.max(0, selectedPrice - discountAmount).toLocaleString(undefined, {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })}
           </p>
           <Button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || Boolean(getDiscountError(discountAmount, selectedPrice))}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-5 gap-2"
           >
             <CircleCheckBig className="w-4 h-4" />

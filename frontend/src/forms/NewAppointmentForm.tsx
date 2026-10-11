@@ -10,6 +10,7 @@ import { DatePickerWithLabel } from "@/components/common/DatePickerWithLabel";
 import { InputWithLabel } from "@/components/common/InputWithLabel";
 import { SelectWithLabel } from "@/components/common/SelectWithLabel";
 import { TextAreaWithLabel } from "@/components/common/TextAreaWithLabel";
+import { PublicBookingAddOns } from "@/components/common/PublicBookingAddOns";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -42,6 +43,7 @@ import {
   type PublicBookingSettings,
   type PublicClosedDate,
   type PublicService,
+  type PublicAddOn,
 } from "@/services/public-booking.api";
 import { publicBookingSchema } from "@/validations/public-booking.validation";
 
@@ -187,6 +189,9 @@ function unavailableForService(
 export function NewAppointmentForm() {
   const [barbers, setBarbers] = useState<PublicBarber[]>([]);
   const [services, setServices] = useState<PublicService[]>([]);
+  const [addOns, setAddOns] = useState<PublicAddOn[]>([]);
+  const [selectedAddOns, setSelectedAddOns] = useState<number[]>([]);
+  const [slotAddOns, setSlotAddOns] = useState<number[][]>([]);
   const [settings, setSettings] = useState<PublicBookingSettings | null>(null);
   const [closedDates, setClosedDates] = useState<PublicClosedDate[]>([]);
   const [mode, setMode] = useState<"single" | "group">("single");
@@ -274,6 +279,8 @@ export function NewAppointmentForm() {
     setSlotServices(p.appointments.map((a) => String(a.service_id)));
     setSlotTimes(p.appointments.map((a) => formatTime12(a.appointment_time)));
     setSlotNames(p.appointments.map((a) => a.customer_name ?? ""));
+    setSelectedAddOns(p.mode === "single" ? p.appointments[0]?.add_on_ids ?? [] : []);
+    setSlotAddOns(p.appointments.map((a) => a.add_on_ids ?? []));
     setFullname(p.fullname);
     setEmail(p.email);
     setEmailConfirmation(p.email_confirmation);
@@ -296,6 +303,7 @@ export function NewAppointmentForm() {
       .then((data) => {
         setBarbers(data.barbers);
         setServices(data.services);
+        setAddOns(data.add_ons ?? []);
         setSettings(data.settings);
         setClosedDates(data.closed_dates);
       })
@@ -307,6 +315,7 @@ export function NewAppointmentForm() {
     setSlotNames((current) => Array.from({ length: slotCount }, (_, index) => index === 0 ? "" : current[index] ?? ""));
     setSlotServices((current) => Array.from({ length: slotCount }, (_, index) => current[index] ?? ""));
     setSlotTimes((current) => Array.from({ length: slotCount }, (_, index) => current[index] ?? ""));
+    setSlotAddOns((current) => Array.from({ length: slotCount }, (_, index) => current[index] ?? []));
   }, [mode, slotCount]);
 
   useEffect(() => {
@@ -346,11 +355,32 @@ export function NewAppointmentForm() {
     value: formatTime12(time),
     label: formatTime12(time),
   }));
+
+  function getGroupTimeOptions(personIndex: number) {
+    return timeOptions.map((time) => {
+      const selectedPersonIndex = slotTimes.findIndex(
+        (selected, index) => index < slotCount && index !== personIndex && selected === time.value,
+      );
+
+      return {
+        ...time,
+        label: selectedPersonIndex >= 0
+          ? `${time.label} — Selected for Person ${selectedPersonIndex + 1}`
+          : time.label,
+        disabled: selectedPersonIndex >= 0
+          || unavailableForService(time.value, slotServices[personIndex], services, occupiedSlots, explicitOpenSlotTimes, blockedSlots)
+          || isPastTime(time.value, selectedDate),
+      };
+    });
+  }
+
   const selectedServiceData = services.find((service) => String(service.id) === selectedService);
-  const singleTotal = Number(selectedServiceData?.price ?? 0);
-  const groupTotal = slotServices.reduce((total, serviceId) => {
+  const addOnTotal = (ids: number[]) => addOns.filter((item) => ids.includes(item.id)).reduce((sum, item) => sum + Number(item.price), 0);
+  const addOnNames = (ids: number[]) => addOns.filter((item) => ids.includes(item.id)).map((item) => sanitizeString(item.name)).join(", ");
+  const singleTotal = Number(selectedServiceData?.price ?? 0) + (selectedService ? addOnTotal(selectedAddOns) : 0);
+  const groupTotal = slotServices.slice(0, slotCount).reduce((total, serviceId, index) => {
     const service = services.find((item) => String(item.id) === serviceId);
-    return total + Number(service?.price ?? 0);
+    return total + Number(service?.price ?? 0) + (service ? addOnTotal(slotAddOns[index] ?? []) : 0);
   }, 0);
   const total = mode === "single" ? singleTotal : groupTotal;
   const barberName = barbers.find((barber) => String(barber.id) === selectedBarber)?.fullname ?? "—";
@@ -399,11 +429,12 @@ export function NewAppointmentForm() {
   function buildPayload(): PublicBookingPayload | null {
     if (!selectedDate) return null;
     const appointments = mode === "single"
-      ? [{ customer_name: null, service_id: Number(selectedService), appointment_time: to24Hour(selectedTime) }]
+      ? [{ customer_name: null, service_id: Number(selectedService), appointment_time: to24Hour(selectedTime), add_on_ids: selectedAddOns }]
       : slotServices.map((serviceId, index) => ({
           customer_name: index === 0 ? null : slotNames[index]?.trim() || null,
           service_id: Number(serviceId),
           appointment_time: to24Hour(slotTimes[index]),
+          add_on_ids: slotAddOns[index] ?? [],
         }));
     const candidate = {
       mode,
@@ -492,6 +523,8 @@ export function NewAppointmentForm() {
     setSlotServices([]);
     setSlotTimes([]);
     setSlotNames([]);
+    setSelectedAddOns([]);
+    setSlotAddOns([]);
     setNotes("");
     setTermsAccepted(false);
     setPrivacyAcknowledged(false);
@@ -539,13 +572,13 @@ export function NewAppointmentForm() {
                   <SelectWithLabel id="slot-count" label="How many total?" placeholder="Select number" options={Array.from({ length: settings.max_slots_per_booking - 1 }, (_, index) => ({ value: String(index + 2), label: String(index + 2) }))} value={String(slotCount)} onValueChange={(value) => setSlotCount(Number(value))} />
                 </div>
               )}
-              <SelectWithLabel id="barber" label="Barber" placeholder="Select a barber" options={barbers.map((barber) => ({ value: String(barber.id), label: barber.fullname }))} value={selectedBarber} onValueChange={(value) => { setSelectedBarber(value); setSelectedDate(undefined); setSelectedTime(""); setSlotTimes([]); }} />
+              <SelectWithLabel id="barber" label="Barber" placeholder="Select a barber" options={barbers.map((barber) => ({ value: String(barber.id), label: barber.fullname }))} value={selectedBarber} onValueChange={(value) => { if (!value || value === selectedBarber) return; setSelectedBarber(value); setSelectedDate(undefined); setSelectedTime(""); setSlotTimes([]); }} />
 
               {mode === "single" ? (
                 <>
-                  <SelectWithLabel id="service" label="Service" placeholder="Select a service" options={services.map((service) => ({ value: String(service.id), label: service.name }))} value={selectedService} onValueChange={setSelectedService} />
+                  <SelectWithLabel id="service" label="Service" placeholder="Select a service" options={services.map((service) => ({ value: String(service.id), label: service.name }))} value={selectedService} onValueChange={(value) => { if (!value || value === selectedService) return; setSelectedService(value); setSelectedAddOns([]); }} />
                   <DatePickerWithLabel id="date" label="Date" placeholder="Pick a date" disablePastDates maxDaysAhead={settings?.booking_days_ahead} disableSundays={false} date={selectedDate} onDateChange={setSelectedDate} disabled={!selectedBarber} closedDates={unavailableDates} isDateDisabled={isDateDisabled} />
-                  <SelectWithLabel id="time" label="Time" placeholder="Select time" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, selectedService, services, occupiedSlots, explicitOpenSlotTimes, blockedSlots) || isPastTime(time.value, selectedDate) }))} value={selectedTime} onValueChange={setSelectedTime} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
+                  <SelectWithLabel id="time" label="Time" placeholder="Select time" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, selectedService, services, occupiedSlots, explicitOpenSlotTimes, blockedSlots) || isPastTime(time.value, selectedDate) }))} value={selectedTime} onValueChange={(value) => { if (value) setSelectedTime(value); }} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
                 </>
               ) : (
                 <>
@@ -565,8 +598,9 @@ export function NewAppointmentForm() {
                             return next;
                           });
                         }} placeholder="Full name" maxLength={255} className="h-10 border-gray-200 bg-white text-gray-900" />
-                        <SelectWithLabel id={`slot-service-${index}`} label="Service" placeholder="Select" options={services.map((service) => ({ value: String(service.id), label: service.name }))} value={slotServices[index] ?? ""} onValueChange={(value) => setSlotServices((current) => { const next = [...current]; next[index] = value; return next; })} disabled={!selectedBarber || !selectedDate} />
-                        <SelectWithLabel id={`slot-time-${index}`} label="Time" placeholder="Select" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, slotServices[index], services, occupiedSlots, explicitOpenSlotTimes, blockedSlots) || isPastTime(time.value, selectedDate) }))} value={slotTimes[index] ?? ""} onValueChange={(value) => setSlotTimes((current) => { const next = [...current]; next[index] = value; return next; })} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
+                        <SelectWithLabel id={`slot-service-${index}`} label="Service" placeholder="Select" options={services.map((service) => ({ value: String(service.id), label: service.name }))} value={slotServices[index] ?? ""} onValueChange={(value) => { if (!value || value === slotServices[index]) return; setSlotServices((current) => { const next = [...current]; next[index] = value; return next; }); setSlotAddOns((current) => { const next = [...current]; next[index] = []; return next; }); }} disabled={!selectedBarber || !selectedDate} />
+                        <SelectWithLabel id={`slot-time-${index}`} label="Time" placeholder="Select" options={getGroupTimeOptions(index)} value={slotTimes[index] ?? ""} onValueChange={(value) => { if (value) setSlotTimes((current) => { const next = [...current]; next[index] = value; return next; }); }} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
+                        {slotServices[index] && <div className="sm:col-span-3"><PublicBookingAddOns addOns={addOns} selected={slotAddOns[index] ?? []} onChange={(ids) => setSlotAddOns((current) => { const next = [...current]; next[index] = ids; return next; })} /></div>}
                       </div>
                     ))}
                   </div>
@@ -574,6 +608,7 @@ export function NewAppointmentForm() {
               )}
 
               <div className="md:col-span-2">
+                {mode === "single" && selectedService && <div className="mb-5"><PublicBookingAddOns addOns={addOns} selected={selectedAddOns} onChange={setSelectedAddOns} /></div>}
                 <TextAreaWithLabel id="notes" label="Notes" placeholder="Add notes for your barber (optional)" rows={4} maxLength={500} value={notes} onChange={(event) => setNotes(event.target.value)} className="border-gray-200 text-gray-900 focus-visible:border-red-400 focus-visible:ring-red-100" />
               </div>
             </div>
@@ -582,10 +617,10 @@ export function NewAppointmentForm() {
           <section className="border-t border-gray-200 pt-6">
             <h2 className="text-lg font-bold text-gray-900">Service Summary</h2>
             <div className="mt-4 space-y-3">
-              {mode === "single" && selectedServiceData && <SummaryRow name={selectedServiceData.name} description={selectedServiceData.description} price={singleTotal} />}
+              {mode === "single" && selectedServiceData && <><SummaryRow name={sanitizeString(selectedServiceData.name)} description={selectedServiceData.description} price={Number(selectedServiceData.price)} />{addOns.filter((item) => selectedAddOns.includes(item.id)).map((item) => <SummaryRow key={item.id} name={sanitizeString(item.name)} price={Number(item.price)} />)}</>}
               {mode === "group" && Array.from({ length: slotCount }, (_, index) => {
                 const service = services.find((item) => String(item.id) === slotServices[index]);
-                return <SummaryRow key={index} name={index === 0 ? fullname || "Person 1" : slotNames[index] || `Person ${index + 1}`} description={service?.name ?? "No service selected"} price={Number(service?.price ?? 0)} />;
+                return <SummaryRow key={index} name={sanitizeString(index === 0 ? fullname || "Person 1" : slotNames[index] || `Person ${index + 1}`)} description={[service?.name ?? "No service selected", addOnNames(slotAddOns[index] ?? [])].filter(Boolean).join(" · ")} price={Number(service?.price ?? 0) + addOnTotal(slotAddOns[index] ?? [])} />;
               })}
               <div className="flex items-center justify-between border-t border-gray-200 pt-3"><p className="font-semibold text-gray-900">Total</p><p className="font-semibold text-gray-900">₱{total.toFixed(2)}</p></div>
             </div>
@@ -611,10 +646,13 @@ export function NewAppointmentForm() {
       </div>
 
       <Dialog open={confirmationOpen} onOpenChange={(open) => !loading && setConfirmationOpen(open)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Confirm Your Booking Information</DialogTitle><DialogDescription>Review everything carefully. Booking updates will be sent to the email below.</DialogDescription></DialogHeader>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] grid-cols-1 overflow-y-auto sm:max-w-lg">
+          <DialogHeader><DialogTitle className="pr-8 leading-snug">Confirm Your Booking Information</DialogTitle><DialogDescription>Review everything carefully. Booking updates will be sent to the email below.</DialogDescription></DialogHeader>
           <div className="space-y-2 rounded-lg bg-slate-50 p-4 text-sm">
-            <Detail label="Name" value={fullname} /><Detail label="Email" value={email.toLowerCase()} /><Detail label="Contact" value={contactNumber} /><Detail label="Barber" value={barberName} /><Detail label="Service" value={serviceSummary} /><Detail label="Date" value={selectedDate?.toLocaleDateString() ?? "—"} /><Detail label="Time" value={timeSummary} /><Detail label="Bookings" value={mode === "single" ? "1" : String(slotCount)} /><Detail label="Total" value={`₱${total.toFixed(2)}`} />
+            <Detail label="Name" value={fullname} /><Detail label="Email" value={email.toLowerCase()} /><Detail label="Contact" value={contactNumber} /><Detail label="Barber" value={barberName} /><Detail label="Service" value={serviceSummary} /><Detail label="Date" value={selectedDate?.toLocaleDateString() ?? "—"} /><Detail label="Time" value={timeSummary} /><Detail label="Bookings" value={mode === "single" ? "1" : String(slotCount)} />
+            {mode === "single" && selectedAddOns.length > 0 && <Detail label="Add-ons" value={addOnNames(selectedAddOns)} />}
+            {mode === "group" && slotAddOns.slice(0, slotCount).map((ids, index) => ids.length > 0 ? <Detail key={index} label={`Person ${index + 1} add-ons`} value={addOnNames(ids)} /> : null)}
+            <Detail label="Total" value={`₱${total.toFixed(2)}`} />
           </div>
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
             <ul className="space-y-1.5">
@@ -633,8 +671,8 @@ export function NewAppointmentForm() {
       </Dialog>
 
       <Dialog open={otpOpen} onOpenChange={(open) => !loading && setOtpOpen(open)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><Mail className="size-5 text-primary" />Verify Your Email</DialogTitle><DialogDescription>Enter the six-digit code sent to {email.toLowerCase()}. The slot will be checked again after verification.</DialogDescription></DialogHeader>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] grid-cols-1 overflow-y-auto sm:max-w-md">
+          <DialogHeader><DialogTitle className="flex items-center gap-2 pr-8 leading-snug"><Mail className="size-5 shrink-0 text-primary" />Verify Your Email</DialogTitle><DialogDescription className="wrap-anywhere">Enter the six-digit code sent to {email.toLowerCase()}. The slot will be checked again after verification.</DialogDescription></DialogHeader>
           <InputWithLabel id="booking-otp" label="Verification Code" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={(event) => { setHasUnsavedFormInput(true); setOtp(event.target.value.replace(/\D/g, "").slice(0, 6)); }} maxLength={6} className="text-center text-xl tracking-[0.4em]" />
           <p className="text-center text-sm text-muted-foreground">
             Having trouble with your code?{" "}
@@ -652,8 +690,8 @@ export function NewAppointmentForm() {
       </Dialog>
 
       <Dialog open={result !== null} onOpenChange={(open) => !open && resetForm()}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><CheckCircle2 className="size-5 text-green-600" />Booking Request Submitted</DialogTitle><DialogDescription>Your request is pending staff confirmation. Save this booking reference for your records.</DialogDescription></DialogHeader>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] grid-cols-1 overflow-y-auto sm:max-w-lg">
+          <DialogHeader><DialogTitle className="flex items-center gap-2 pr-8 leading-snug"><CheckCircle2 className="size-5 shrink-0 text-green-600" />Booking Request Submitted</DialogTitle><DialogDescription>Your request is pending staff confirmation. Save this booking reference for your records.</DialogDescription></DialogHeader>
           <div className="rounded-xl bg-slate-100 p-5 text-center"><p className="text-xs font-medium uppercase tracking-wider text-gray-500">Booking Reference</p><p className="mt-2 text-2xl font-bold tracking-wide text-primary">{result?.reference}</p><p className="mt-2 text-sm font-medium capitalize text-amber-700">{result?.status}</p></div>
           <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 text-sm">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -672,14 +710,16 @@ export function NewAppointmentForm() {
                 {pendingPayload?.appointments.map((slot, index) => {
                   const service = services.find((item) => item.id === slot.service_id);
                   const customerName = slot.customer_name || fullname;
+                  const selectedSlotAddOns = addOns.filter((item) => slot.add_on_ids?.includes(item.id));
                   return (
                     <div key={index} className="flex items-start justify-between gap-4 rounded-lg bg-slate-50 px-3 py-2.5">
-                      <div className="min-w-0">
+                      <div className="min-w-0 wrap-anywhere">
                         <p className="font-medium text-gray-900">{pendingPayload.mode === "group" ? customerName : service?.name ?? "Service"}</p>
                         {pendingPayload.mode === "group" ? <p className="text-gray-600">{service?.name ?? "Service"}</p> : null}
+                        {selectedSlotAddOns.length > 0 && <p className="text-xs text-gray-600">{selectedSlotAddOns.map((item) => sanitizeString(item.name)).join(", ")}</p>}
                         <p className="text-xs text-gray-500">{formatTime12(slot.appointment_time)}</p>
                       </div>
-                      <p className="shrink-0 font-medium text-gray-900">₱{Number(service?.price ?? 0).toFixed(2)}</p>
+                      <p className="shrink-0 font-medium text-gray-900">₱{(Number(service?.price ?? 0) + addOnTotal(slot.add_on_ids ?? [])).toFixed(2)}</p>
                     </div>
                   );
                 })}
@@ -727,7 +767,7 @@ function SummaryRow({ name, description, price }: { name: string; description?: 
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
-  return <div className="flex justify-between gap-4"><span className="text-gray-500">{label}</span><span className="text-right font-medium text-gray-900">{value}</span></div>;
+  return <div className="flex min-w-0 items-start justify-between gap-4"><span className="shrink-0 text-gray-500">{label}</span><span className="min-w-0 flex-1 wrap-anywhere text-right font-medium text-gray-900">{value}</span></div>;
 }
 
 function formatBookingDate(value: string | undefined): string {

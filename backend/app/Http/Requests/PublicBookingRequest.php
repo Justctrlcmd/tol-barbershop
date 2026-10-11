@@ -66,15 +66,33 @@ class PublicBookingRequest extends FormRequest
             'appointments.*.customer_name' => ['nullable', 'string', 'max:255', 'regex:/^[\pL\s.\'-]+$/u'],
             'appointments.*.service_id' => ['required', 'integer', Rule::exists('services', 'id')->where('is_active', true)],
             'appointments.*.appointment_time' => ['required', 'date_format:H:i'],
+            'appointments.*.add_on_ids' => ['sometimes', 'array', 'max:50'],
+            'appointments.*.add_on_ids.*' => [
+                'integer', 'min:1',
+                Rule::exists('service_add_ons', 'id')->where('is_active', true)->whereNull('deleted_at'),
+            ],
         ];
     }
 
     public function withValidator($validator): void
     {
         $validator->after(function ($validator): void {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
             $mode = $this->input('mode');
             $appointments = $this->input('appointments', []);
             $count = is_array($appointments) ? count($appointments) : 0;
+
+            if (is_array($appointments)) {
+                foreach ($appointments as $index => $appointment) {
+                    $ids = $appointment['add_on_ids'] ?? [];
+                    if (is_array($ids) && count($ids) !== count(array_unique($ids, SORT_REGULAR))) {
+                        $validator->errors()->add("appointments.{$index}.add_on_ids", 'Select each add-on once.');
+                    }
+                }
+            }
 
             if ($mode === 'single' && $count !== 1) {
                 $validator->errors()->add('appointments', 'A single booking must contain exactly one scheduled service.');

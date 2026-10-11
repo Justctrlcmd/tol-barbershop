@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { discountAmountSchema } from "@/validations/discount.validation";
 
 export const appointmentStatusSchema = z.enum([
   "pending",
@@ -39,6 +40,7 @@ const baseAppointmentSchema = z.object({
 export const createAppointmentSchema = baseAppointmentSchema;
 
 const updateBaseSchema = z.object({
+  discount_amount: discountAmountSchema.optional(),
   booking_customer_id: z.number().int().positive(),
   service_id: z.number().int().positive(),
   barber_user_id: z.number().int().positive(),
@@ -61,7 +63,14 @@ const updateBaseSchema = z.object({
   cancellation_reason: z.string().max(500).nullable().optional(),
 });
 
-export const updateAppointmentSchema = updateBaseSchema;
+export const updateAppointmentSchema = updateBaseSchema.superRefine((data, ctx) => {
+  if (data.discount_amount !== undefined && data.status !== "completed") {
+    ctx.addIssue({ code: "custom", path: ["discount_amount"], message: "Discounts can only be applied when completing a booking." });
+  }
+  if ((data.discount_amount ?? 0) > data.price) {
+    ctx.addIssue({ code: "custom", path: ["discount_amount"], message: "Discount cannot exceed the booking total." });
+  }
+});
 
 export const cancellationReasonSchema = z.object({
   cancellation_reason: z

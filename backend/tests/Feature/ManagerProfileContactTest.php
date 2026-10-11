@@ -9,6 +9,7 @@ uses(RefreshDatabase::class);
 test('manager profile can be updated without a contact number', function () {
     $manager = User::factory()->create([
         'role' => 'manager',
+        'fullname' => 'Test Manager',
         'contact_number' => null,
     ]);
     Sanctum::actingAs($manager);

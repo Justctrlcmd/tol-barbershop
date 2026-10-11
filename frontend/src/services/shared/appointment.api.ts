@@ -67,6 +67,10 @@ export interface Appointment {
     name: string | null;
   };
   add_ons?: AppointmentAddOn[];
+  subtotal?: number | string;
+  discount_type?: string | null;
+  discount_amount?: number | string;
+  discount_applied_by_user_id?: number | null;
   appointment_date: string;
   appointment_time: string;
   duration_minutes: number | null;
@@ -123,6 +127,7 @@ export interface AppointmentHistoryResponse {
 }
 
 export interface CreateAppointmentData {
+  discount_amount?: number;
   booking_customer_id?: number;
   service_id: number;
   barber_user_id: number;
@@ -149,6 +154,7 @@ export type CreateAssistedBookingData = {
 };
 
 export interface UpdateAppointmentData {
+  discount_amount?: number;
   booking_customer_id: number;
   service_id: number;
   barber_user_id: number;

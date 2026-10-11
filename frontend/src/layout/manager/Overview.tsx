@@ -27,6 +27,7 @@ import {
   UserX,
   X,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import {
   useCallback,
   useEffect,
@@ -76,6 +77,11 @@ import type {
   WeeklyAvailabilityDay,
   WeeklySchedule,
 } from "@/services/manager/overview.api";
+
+const CompleteBookingDialog = dynamic(
+  () => import("@/components/common/CompleteBookingDialog").then((mod) => mod.CompleteBookingDialog),
+  { ssr: false },
+);
 
 function formatDateToLocal(date: Date): string {
   return (
@@ -839,6 +845,7 @@ export function Overview() {
     useState<Appointment | null>(null);
   const [dashboardAddOnAppointment, setDashboardAddOnAppointment] =
     useState<Appointment | null>(null);
+  const [completionAppointment, setCompletionAppointment] = useState<Appointment | null>(null);
   const [dashboardActionId, setDashboardActionId] = useState<number | null>(
     null,
   );
@@ -1167,14 +1174,15 @@ export function Overview() {
     setDashboardActionId(slotAppointment.id);
     try {
       const appointment = await resolveDashboardAppointment(slotAppointment.id);
+      if (status === "completed") {
+        setDetailSlot(null);
+        setCompletionAppointment(appointment);
+        return;
+      }
       const payload = buildDashboardAppointmentUpdate(appointment, status);
 
       await updateAppointment(appointment.id, payload);
-      toast.success(
-        status === "completed"
-          ? "Booking marked as completed."
-          : "Booking marked as no-show.",
-      );
+      toast.success("Booking marked as no-show.");
 
       await loadSchedule();
       window.dispatchEvent(new CustomEvent("appointments:updated"));
@@ -1185,6 +1193,24 @@ export function Overview() {
           ? error.message
           : "Could not update this booking. Please try again.",
       );
+    } finally {
+      setDashboardActionId(null);
+    }
+  };
+
+  const completeDashboardBooking = async (discount: number): Promise<boolean> => {
+    if (!completionAppointment || dashboardActionId !== null) return false;
+    setDashboardActionId(completionAppointment.id);
+    try {
+      const payload = buildDashboardAppointmentUpdate(completionAppointment, "completed");
+      await updateAppointment(completionAppointment.id, { ...payload, discount_amount: discount });
+      toast.success("Booking marked as completed.");
+      await loadSchedule();
+      window.dispatchEvent(new CustomEvent("appointments:updated"));
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not complete this booking.");
+      return false;
     } finally {
       setDashboardActionId(null);
     }
@@ -1539,6 +1565,7 @@ export function Overview() {
         }}
         onUpdated={handleDashboardAddOnUpdated}
       />
+      {completionAppointment && <CompleteBookingDialog key={completionAppointment.id} appointment={completionAppointment} onClose={() => setCompletionAppointment(null)} onConfirm={completeDashboardBooking} />}
     </div>
   );
 }

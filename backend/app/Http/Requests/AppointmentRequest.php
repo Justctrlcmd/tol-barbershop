@@ -110,6 +110,17 @@ class AppointmentRequest extends FormRequest
                 'max:999999',
             ],
 
+            'discount_type' => ['prohibited'],
+
+            'discount_amount' => [
+                'sometimes',
+                'numeric',
+                'decimal:0,2',
+                'min:0',
+                'max:999999',
+                Rule::prohibitedIf($this->input('status') !== 'completed'),
+            ],
+
             'status' => [
                 'nullable',
                 Rule::in([

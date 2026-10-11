@@ -10,9 +10,11 @@ use App\Models\ClosedDates;
 use App\Models\Notification as StaffNotification;
 use App\Models\ScheduleBlockedSlot;
 use App\Models\Service;
+use App\Models\ServiceAddOn;
 use App\Models\User;
 use App\Notifications\BookingMailNotification;
 use App\Services\AppointmentBookingService;
+use App\Services\AppointmentPricingService;
 use App\Services\BookingCustomerService;
 use App\Services\BookingScheduleService;
 use App\Services\PushNotificationService;
@@ -39,6 +41,7 @@ class PublicBookingController extends Controller
         private readonly AppointmentBookingService $bookingService,
         private readonly BookingCustomerService $customerService,
         private readonly BookingScheduleService $scheduleService,
+        private readonly AppointmentPricingService $pricingService,
     ) {}
 
     public function bootstrap(): JsonResponse
@@ -62,6 +65,7 @@ class PublicBookingController extends Controller
                 ->where('is_removed', false)
                 ->whereBetween('date_closed', [now()->toDateString(), $latest])
                 ->get(['date_closed', 'closure_scope', 'barber_user_id']),
+            'add_ons' => ServiceAddOn::where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
             'settings' => [
                 ...$this->scheduleService->settingsPayload($schedule),
                 'open_slots' => $this->scheduleService->publicOpenSlots($schedule)->all(),
@@ -133,6 +137,7 @@ class PublicBookingController extends Controller
         $validated = $request->validated();
 
         DB::transaction(function () use ($validated): void {
+            $this->pricingService->publicAddOns($validated['appointments']);
             $this->bookingService->validateAndLock(
                 null,
                 (int) $validated['barber_user_id'],
@@ -201,6 +206,7 @@ class PublicBookingController extends Controller
                 }
 
                 $payload = $verification->payload;
+                $addOnsBySlot = $this->pricingService->publicAddOns($payload['appointments']);
                 $customer = $this->customerService->findOrCreate(
                     $payload['fullname'],
                     $verification->email,
@@ -236,14 +242,14 @@ class PublicBookingController extends Controller
                     $service = $resources['services']->get((int) $slot['service_id']);
                     $memberName = $index === 0 ? null : ($slot['customer_name'] ?? null);
 
-                    $appointments[] = Appointment::create([
+                    $appointment = Appointment::create([
                         'booking_customer_id' => $customer->id,
                         'service_id' => $service->id,
                         'barber_user_id' => $resources['barber']->id,
                         'appointment_date' => $payload['appointment_date'],
                         'appointment_time' => $slot['appointment_time'],
                         'duration_minutes' => $service->duration,
-                        'price' => $service->price,
+                        'price' => round((float) $service->price + collect($addOnsBySlot[$index])->sum('price'), 2),
                         'status' => 'pending',
                         'booking_source' => 'public',
                         'active_slot_key' => $requiresStaffReview
@@ -262,6 +268,8 @@ class PublicBookingController extends Controller
                         'barber_name_snapshot' => $resources['barber']->fullname,
                         'notes' => $payload['notes'] ?? null,
                     ]);
+                    $appointment->addOns()->createMany($addOnsBySlot[$index]);
+                    $appointments[] = $appointment;
                 }
 
                 $verification->forceFill(['verified_at' => now()])->save();

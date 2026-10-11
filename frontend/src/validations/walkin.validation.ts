@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { discountAmountSchema } from "@/validations/discount.validation";
 
 const walkinDateSchema = z
   .string()
@@ -17,6 +18,7 @@ const walkinDateSchema = z
   );
 
 export const walkinSchema = z.object({
+  discount_amount: discountAmountSchema.optional(),
   customer_name: z
     .string()
     .trim()
@@ -45,6 +47,10 @@ export const walkinSchema = z.object({
     .max(500, "Notes must not exceed 500 characters.")
     .nullable()
     .optional(),
+}).superRefine((data, ctx) => {
+  if ((data.discount_amount ?? 0) > data.price) {
+    ctx.addIssue({ code: "custom", path: ["discount_amount"], message: "Discount cannot exceed the booking total." });
+  }
 });
 
 export type WalkinSchemaValues = z.infer<typeof walkinSchema>;

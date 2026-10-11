@@ -16,6 +16,7 @@ use App\Models\Service;
 use App\Models\User;
 use App\Services\AppointmentBookingService;
 use App\Services\AppointmentNotificationService;
+use App\Services\AppointmentPricingService;
 use App\Services\BookingScheduleService;
 use App\Support\EntityChange;
 use App\Traits\ApiResponseTrait;
@@ -39,6 +40,7 @@ class AppointmentController extends Controller
         private readonly AppointmentBookingService $bookingService,
         private readonly AppointmentNotificationService $appointmentNotificationService,
         private readonly BookingScheduleService $scheduleService,
+        private readonly AppointmentPricingService $pricingService,
     ) {}
 
     /**
@@ -150,7 +152,7 @@ class AppointmentController extends Controller
         $this->assertStaffCanCreateType($authUser, $isWalkin ? 'walkin' : 'appointment');
 
         if ($isWalkin) {
-            $appointment = DB::transaction(function () use ($validated): Appointment {
+            $appointment = DB::transaction(function () use ($validated, $authUser): Appointment {
                 $resources = $this->bookingService->lockActiveResources(
                     null,
                     (int) $validated['barber_user_id'],
@@ -164,12 +166,14 @@ class AppointmentController extends Controller
                 $now = Carbon::now();
 
                 return Appointment::create([
+                    ...$this->pricingService->completion(
+                        (float) $service->price, (float) ($validated['discount_amount'] ?? 0), $authUser->id,
+                    ),
                     'service_id' => $service->id,
                     'barber_user_id' => $resources['barber']->id,
                     'appointment_date' => $validated['appointment_date'],
                     'appointment_time' => $validated['appointment_time'],
                     'duration_minutes' => $service->duration,
-                    'price' => $service->price,
                     'status' => 'completed',
                     'is_walkin' => true,
                     'booking_source' => 'walkin',
@@ -401,7 +405,7 @@ class AppointmentController extends Controller
         $snapshot = Appointment::findOrFail($id);
 
         try {
-            [$appointment, $originalStatus, $nextStatus, $detailsChanged] = DB::transaction(function () use ($id, $validated, $snapshot): array {
+            [$appointment, $originalStatus, $nextStatus, $detailsChanged] = DB::transaction(function () use ($id, $validated, $snapshot, $request): array {
                 $this->bookingService->lockUsers([
                     $snapshot->barber_user_id,
                     $validated['barber_user_id'],
@@ -417,6 +421,16 @@ class AppointmentController extends Controller
                 $originalStatus = (string) $appointment->status;
                 $nextStatus = (string) ($validated['status'] ?? $originalStatus);
                 $this->bookingService->assertValidStatusTransition($originalStatus, $nextStatus);
+
+                if ($nextStatus === 'completed' && $originalStatus === 'confirmed'
+                    && round((float) $validated['price'], 2) !== round((float) $appointment->price, 2)) {
+                    throw ValidationException::withMessages(['price' => 'The booking total changed. Refresh and review it before completing.']);
+                }
+
+                if ($originalStatus === 'completed' && array_key_exists('discount_amount', $validated)
+                    && round((float) $validated['discount_amount'], 2) !== round((float) $appointment->discount_amount, 2)) {
+                    throw ValidationException::withMessages(['discount_amount' => 'A completed booking discount cannot be changed.']);
+                }
 
                 if ((int) ($validated['booking_customer_id'] ?? 0) !== (int) $appointment->booking_customer_id) {
                     throw ValidationException::withMessages([
@@ -488,10 +502,10 @@ class AppointmentController extends Controller
                     'appointment_date' => $validated['appointment_date'],
                     'appointment_time' => $validated['appointment_time'],
                     'duration_minutes' => $service->duration,
-                    'price' => round(
+                    'price' => $detailsChanged ? round(
                         (float) $service->price + (float) $appointment->addOns()->sum('price'),
                         2,
-                    ),
+                    ) : $appointment->price,
                     'status' => $nextStatus,
                     'active_slot_key' => in_array($nextStatus, AppointmentBookingService::ACTIVE_STATUSES, true)
                         ? $this->bookingService->activeSlotKey(
@@ -513,6 +527,14 @@ class AppointmentController extends Controller
                     'service_name_snapshot' => $service->name,
                     'barber_name_snapshot' => $barber->fullname,
                 ];
+
+                if ($nextStatus === 'completed' && $originalStatus !== 'completed') {
+                    $updates = array_replace($updates, $this->pricingService->completion(
+                        (float) $appointment->price,
+                        (float) ($validated['discount_amount'] ?? 0),
+                        $request->user()?->id,
+                    ));
+                }
 
                 if ($nextStatus !== $originalStatus) {
                     $timestampColumn = match ($nextStatus) {
