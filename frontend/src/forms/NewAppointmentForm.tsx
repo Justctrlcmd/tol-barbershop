@@ -168,24 +168,6 @@ function isPastTime(value: string, selectedDate?: Date): boolean {
   return hour * 60 + Number(match[2]) + 15 <= new Date().getHours() * 60 + new Date().getMinutes();
 }
 
-function unavailableForService(
-  time: string,
-  serviceId: string,
-  services: PublicService[],
-  occupiedSlots: OccupiedPublicSlot[],
-  explicitOpenSlotTimes: string[],
-  blockedSlots: OccupiedPublicSlot[],
-): boolean {
-  const service = services.find((item) => String(item.id) === serviceId);
-  return isTimeSlotUnavailable(
-    time,
-    Number(service?.duration ?? 60),
-    occupiedSlots,
-    explicitOpenSlotTimes,
-    blockedSlots,
-  );
-}
-
 export function NewAppointmentForm() {
   const [barbers, setBarbers] = useState<PublicBarber[]>([]);
   const [services, setServices] = useState<PublicService[]>([]);
@@ -212,7 +194,6 @@ export function NewAppointmentForm() {
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [occupiedSlots, setOccupiedSlots] = useState<OccupiedPublicSlot[]>([]);
   const [blockedSlots, setBlockedSlots] = useState<OccupiedPublicSlot[]>([]);
-  const [explicitOpenSlotTimes, setExplicitOpenSlotTimes] = useState<string[]>([]);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -322,7 +303,6 @@ export function NewAppointmentForm() {
     if (!selectedBarber || !selectedDate) {
       setOccupiedSlots([]);
       setBlockedSlots([]);
-      setExplicitOpenSlotTimes([]);
       setAvailableTimes([]);
       return;
     }
@@ -332,13 +312,11 @@ export function NewAppointmentForm() {
       .then((availability) => {
         setOccupiedSlots(availability.occupied_slots);
         setBlockedSlots(availability.blocked_slots);
-        setExplicitOpenSlotTimes(availability.open_slot_times);
         setAvailableTimes(availability.time_slots);
       })
       .catch(() => {
         setOccupiedSlots([]);
         setBlockedSlots([]);
-        setExplicitOpenSlotTimes([]);
         setAvailableTimes([]);
         toast.error("Failed to check availability.");
       })
@@ -368,7 +346,7 @@ export function NewAppointmentForm() {
           ? `${time.label} — Selected for Person ${selectedPersonIndex + 1}`
           : time.label,
         disabled: selectedPersonIndex >= 0
-          || unavailableForService(time.value, slotServices[personIndex], services, occupiedSlots, explicitOpenSlotTimes, blockedSlots)
+          || isTimeSlotUnavailable(time.value, occupiedSlots, blockedSlots)
           || isPastTime(time.value, selectedDate),
       };
     });
@@ -578,7 +556,7 @@ export function NewAppointmentForm() {
                 <>
                   <SelectWithLabel id="service" label="Service" placeholder="Select a service" options={services.map((service) => ({ value: String(service.id), label: service.name }))} value={selectedService} onValueChange={(value) => { if (!value || value === selectedService) return; setSelectedService(value); setSelectedAddOns([]); }} />
                   <DatePickerWithLabel id="date" label="Date" placeholder="Pick a date" disablePastDates maxDaysAhead={settings?.booking_days_ahead} disableSundays={false} date={selectedDate} onDateChange={setSelectedDate} disabled={!selectedBarber} closedDates={unavailableDates} isDateDisabled={isDateDisabled} />
-                  <SelectWithLabel id="time" label="Time" placeholder="Select time" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, selectedService, services, occupiedSlots, explicitOpenSlotTimes, blockedSlots) || isPastTime(time.value, selectedDate) }))} value={selectedTime} onValueChange={(value) => { if (value) setSelectedTime(value); }} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
+                  <SelectWithLabel id="time" label="Time" placeholder="Select time" options={timeOptions.map((time) => ({ ...time, disabled: isTimeSlotUnavailable(time.value, occupiedSlots, blockedSlots) || isPastTime(time.value, selectedDate) }))} value={selectedTime} onValueChange={(value) => { if (value) setSelectedTime(value); }} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
                 </>
               ) : (
                 <>

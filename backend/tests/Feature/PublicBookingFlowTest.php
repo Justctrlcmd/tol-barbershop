@@ -157,9 +157,141 @@ it('reuses a phone-only crm customer when public booking adds a verified email',
         ->and(Appointment::sole()->booking_source)->toBe('public');
 });
 
+it('public bookings reserve distinct start times without duration conflicts', function (string $mode, array $times) {
+    Notification::fake();
+    [$barber, $service] = bookingResources();
+    $service->update(['duration' => 60]);
+    $customer = BookingCustomer::create([
+        'fullname' => 'Existing Customer',
+        'email' => 'existing-duration@example.test',
+        'contact_number' => '09170000000',
+    ]);
+    Appointment::create([
+        'booking_customer_id' => $customer->id,
+        'service_id' => $service->id,
+        'barber_user_id' => $barber->id,
+        'appointment_date' => '2026-09-04',
+        'appointment_time' => '12:30',
+        'duration_minutes' => 480,
+        'price' => 200,
+        'status' => 'confirmed',
+        'active_slot_key' => "{$barber->id}|2026-09-04|12:30",
+    ]);
+    $payload = publicBookingPayload($barber, $service, [
+        'mode' => $mode,
+        'appointments' => collect($times)->map(fn (string $time, int $index): array => [
+            'customer_name' => $index === 0 ? null : 'Second Guest',
+            'service_id' => $service->id,
+            'appointment_time' => $time,
+            'duration_minutes' => 1,
+        ])->all(),
+    ]);
+    $request = $this->postJson('/api/v1/public-booking/request-otp', $payload)->assertOk();
+    $otp = null;
+    Notification::assertSentOnDemand(
+        BookingMailNotification::class,
+        function (BookingMailNotification $notification) use (&$otp): bool {
+            $otp = $notification->content['highlight'];
+
+            return true;
+        },
+    );
+    $verified = $this->postJson('/api/v1/public-booking/verify-otp', [
+        'request_token' => $request->json('data.request_token'),
+        'otp' => $otp,
+    ])->assertCreated();
+
+    $this->getJson("/api/v1/public-booking/available-slots?barber_id={$barber->id}&date=2026-09-04")
+        ->assertOk()->assertJsonCount(count($times) + 1, 'data');
+    expect(Appointment::whereIn('id', $verified->json('data.appointment_ids'))->get()
+        ->every(fn (Appointment $appointment): bool => $appointment->duration_minutes === 60 && $appointment->active_slot_key !== null))
+        ->toBeTrue();
+
+    $this->postJson('/api/v1/public-booking/request-otp', publicBookingPayload($barber, $service, [
+        'appointments' => [['appointment_time' => '12:30']],
+        'email' => 'duplicate-attempt@example.test',
+        'email_confirmation' => 'duplicate-attempt@example.test',
+        'ignore_appointment_id' => Appointment::firstOrFail()->id,
+        'open_slot_times' => ['12:30'],
+        'duration_minutes' => 1,
+    ]))->assertUnprocessable()->assertJsonValidationErrors('appointment_time');
+})->with([
+    'single' => ['single', ['13:00']],
+    'group' => ['group', ['13:00', '14:00']],
+]);
+
+it('rejects duplicate start times within a public group before sending an otp', function () {
+    Notification::fake();
+    [$barber, $service] = bookingResources();
+    $this->postJson('/api/v1/public-booking/request-otp', publicBookingPayload($barber, $service, [
+        'mode' => 'group',
+        'appointments' => [
+            ['service_id' => $service->id, 'appointment_time' => '13:00'],
+            ['customer_name' => 'Second Guest', 'service_id' => $service->id, 'appointment_time' => '13:00'],
+        ],
+    ]))->assertUnprocessable()->assertJsonValidationErrors('appointments.1.appointment_time');
+
+    expect(Appointment::count())->toBe(0)
+        ->and(BookingVerification::count())->toBe(0);
+    Notification::assertNothingSent();
+});
+
+it('rechecks exact start time availability after otp verification', function (string $competingTime, bool $conflicts) {
+    Notification::fake();
+    [$barber, $service] = bookingResources();
+    $service->update(['duration' => 60]);
+    $request = $this->postJson('/api/v1/public-booking/request-otp', publicBookingPayload($barber, $service, [
+        'appointments' => [['appointment_time' => '13:00']],
+    ]))->assertOk();
+    $otp = null;
+    Notification::assertSentOnDemand(
+        BookingMailNotification::class,
+        function (BookingMailNotification $notification) use (&$otp): bool {
+            $otp = $notification->content['highlight'];
+
+            return true;
+        },
+    );
+    $customer = BookingCustomer::create([
+        'fullname' => 'Competing Customer',
+        'email' => 'competing@example.test',
+        'contact_number' => '09170000000',
+    ]);
+    Appointment::create([
+        'booking_customer_id' => $customer->id,
+        'service_id' => $service->id,
+        'barber_user_id' => $barber->id,
+        'appointment_date' => '2026-09-04',
+        'appointment_time' => $competingTime,
+        'duration_minutes' => 60,
+        'price' => 200,
+        'status' => 'confirmed',
+        'active_slot_key' => "{$barber->id}|2026-09-04|{$competingTime}",
+    ]);
+    $response = $this->postJson('/api/v1/public-booking/verify-otp', [
+        'request_token' => $request->json('data.request_token'),
+        'otp' => $otp,
+    ]);
+
+    if ($conflicts) {
+        $response->assertUnprocessable()->assertJsonValidationErrors('appointment_time');
+        expect(Appointment::count())->toBe(1)
+            ->and(BookingCustomer::count())->toBe(1)
+            ->and(BookingVerification::sole()->verified_at)->toBeNull();
+    } else {
+        $response->assertCreated();
+        expect(Appointment::count())->toBe(2)
+            ->and(BookingVerification::sole()->verified_at)->not->toBeNull();
+    }
+})->with([
+    'different start time' => ['12:30', false],
+    'same start time' => ['13:00', true],
+]);
+
 it('defers five-member group reservations until staff confirms the group', function () {
     Notification::fake();
     [$barber, $service] = bookingResources();
+    $service->update(['duration' => 480]);
     $otp = null;
     $groupAppointments = collect(['09:00', '10:00', '11:00', '12:30', '13:00'])
         ->map(fn (string $time, int $index): array => [

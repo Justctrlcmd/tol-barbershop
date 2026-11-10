@@ -91,14 +91,14 @@ test('weekly schedule includes a date-specific open slot on a recurring closed d
         ->and($response->json('time_slots.0.time'))->toBe('8:30 PM');
 });
 
-test('weekly schedule accounts for duration overlaps and closed dates', function () {
+test('weekly schedule counts only booked start times and respects closed dates', function () {
     $manager = User::factory()->create(['role' => 'manager']);
     $customer = BookingCustomer::create(['fullname' => 'Dashboard Customer', 'email' => 'dashboard-one@example.test', 'contact_number' => '09170000000']);
     $firstBarber = User::factory()->create(['role' => 'barber', 'is_active' => true]);
     User::factory()->create(['role' => 'barber', 'is_active' => true]);
     $service = Service::create([
         'name' => 'Long Dashboard Service',
-        'description' => 'Duration-aware dashboard test service',
+        'description' => 'Dashboard test service',
         'duration' => 90,
         'price' => 500,
         'is_active' => true,
@@ -125,19 +125,19 @@ test('weekly schedule accounts for duration overlaps and closed dates', function
         '/api/v1/appointments/overview/weekly-schedule?date=2026-07-21',
     )->assertOk();
 
-    expect($response->json('days.1.available_slots'))->toBe(20)
+    expect($response->json('days.1.available_slots'))->toBe(21)
         ->and($response->json('days.3.is_closed'))->toBeTrue()
         ->and($response->json('days.3.available_slots'))->toBe(0)
         ->and($response->json('weekly_stats.confirmed_appointments'))->toBe(1)
         ->and($response->json('time_slots.0.available_barbers'))->toBe(1)
-        ->and($response->json('time_slots.1.available_barbers'))->toBe(1)
+        ->and($response->json('time_slots.1.available_barbers'))->toBe(2)
         ->and($response->json('time_slots.2.available_barbers'))->toBe(2)
         ->and($response->json('time_slots.0.appointments.0.id'))->toBe(
             Appointment::query()->value('id'),
         );
 });
 
-test('weekly schedule keeps an explicit open slot available over a standard booking interval', function () {
+test('weekly schedule includes custom start times regardless of nearby booking duration', function () {
     $manager = User::factory()->create(['role' => 'manager']);
     $customer = BookingCustomer::create([
         'fullname' => 'Open Slot Dashboard Customer',

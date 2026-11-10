@@ -11,7 +11,6 @@ use App\Models\Appointment;
 use App\Models\BookingCustomer;
 use App\Models\ClosedDates;
 use App\Models\ScheduleBlockedSlot;
-use App\Models\ScheduleOpenSlot;
 use App\Models\Service;
 use App\Models\User;
 use App\Services\AppointmentBookingService;
@@ -328,7 +327,7 @@ class AppointmentController extends Controller
         } catch (ValidationException $exception) {
             $hasTimeConflict = collect($exception->errors())
                 ->flatten()
-                ->contains(fn (string $message): bool => str_contains($message, 'overlaps another booking'));
+                ->contains(fn (string $message): bool => str_contains($message, 'is already booked.'));
 
             if ($status === 'confirmed' && $hasTimeConflict) {
                 return $this->error(
@@ -737,7 +736,7 @@ class AppointmentController extends Controller
             ->map(fn ($id): int => (int) $id)
             ->all();
 
-        $activeAppointments = Appointment::with('service:id,duration')
+        $activeAppointments = Appointment::query()
             ->whereBetween('appointment_date', [
                 $weekStart->toDateString(),
                 $weekEnd->toDateString(),
@@ -747,31 +746,14 @@ class AppointmentController extends Controller
             ->whereIn('barber_user_id', $activeBarberIds)
             ->get([
                 'id',
-                'service_id',
                 'barber_user_id',
                 'appointment_date',
                 'appointment_time',
-                'duration_minutes',
             ]);
 
         $activeAppointmentsByDate = $activeAppointments->groupBy(
             fn (Appointment $appointment): string => $appointment->appointment_date->toDateString(),
         );
-        $openSlotBarberIdsByDateAndTime = ScheduleOpenSlot::query()
-            ->whereBetween('slot_date', [
-                $weekStart->toDateString(),
-                $weekEnd->toDateString(),
-            ])
-            ->whereIn('barber_user_id', $activeBarberIds)
-            ->get(['slot_date', 'slot_time', 'barber_user_id'])
-            ->groupBy(fn (ScheduleOpenSlot $slot): string => $slot->slot_date->toDateString()
-                .'|'.substr((string) $slot->slot_time, 0, 5))
-            ->map(fn (Collection $slots): array => $slots
-                ->pluck('barber_user_id')
-                ->map(fn ($barberId): int => (int) $barberId)
-                ->all())
-            ->all();
-
         $weeklyAppointmentStats = Appointment::withTrashed()
             ->whereBetween('appointment_date', [
                 $weekStart->toDateString(),
@@ -828,7 +810,7 @@ class AppointmentController extends Controller
                 || $dateSlots === [];
             $isPast = $date->lt($today);
             $dayAppointments = $activeAppointmentsByDate->get($dateKey, new Collection);
-            $occupiedIntervals = $this->dashboardOccupiedIntervals($dayAppointments);
+            $occupiedStartTimes = $this->dashboardOccupiedStartTimes($dayAppointments);
             $totalSlots = 0;
             $availableSlots = 0;
 
@@ -847,9 +829,8 @@ class AppointmentController extends Controller
                     $totalSlots += count($eligibleBarberIds);
                     $availableSlots += $this->dashboardAvailableBarberCount(
                         $eligibleBarberIds,
-                        $occupiedIntervals,
+                        $occupiedStartTimes,
                         $slotMinutes,
-                        $openSlotBarberIdsByDateAndTime[$dateKey.'|'.$slot['value']] ?? [],
                     );
                 }
             }
@@ -914,7 +895,6 @@ class AppointmentController extends Controller
                 $selectedAvailableBarberIds,
                 $selectedDateIsClosed,
                 $now,
-                $openSlotBarberIdsByDateAndTime,
             ),
         ]);
     }
@@ -1051,12 +1031,11 @@ class AppointmentController extends Controller
         array $activeBarberIds,
         bool $isClosed,
         Carbon $now,
-        array $openSlotBarberIdsByDateAndTime,
     ): array {
         $appointmentsByTime = $appointments->groupBy(
             fn (Appointment $appointment): string => substr((string) $appointment->appointment_time, 0, 5),
         );
-        $occupiedIntervals = $this->dashboardOccupiedIntervals($activeAppointments);
+        $occupiedStartTimes = $this->dashboardOccupiedStartTimes($activeAppointments);
         $isPastDate = $date->copy()->startOfDay()->lt($now->copy()->startOfDay());
 
         return collect($this->dashboardSlotsForDate($date->toDateString(), $activeBarberIds))->map(function (array $slot) use (
@@ -1066,8 +1045,7 @@ class AppointmentController extends Controller
             $isClosed,
             $isPastDate,
             $now,
-            $occupiedIntervals,
-            $openSlotBarberIdsByDateAndTime,
+            $occupiedStartTimes,
         ): array {
             $slotMinutes = $this->dashboardTimeToMinutes($slot['value']);
             $isPast = $isPastDate || $this->dashboardSlotIsPast($date, $slotMinutes, $now);
@@ -1080,9 +1058,8 @@ class AppointmentController extends Controller
                 ? 0
                 : $this->dashboardAvailableBarberCount(
                     $eligibleBarberIds,
-                    $occupiedIntervals,
+                    $occupiedStartTimes,
                     $slotMinutes,
-                    $openSlotBarberIdsByDateAndTime[$date->toDateString().'|'.$slot['value']] ?? [],
                 );
             $slotAppointments = $appointmentsByTime->get($slot['value'], new Collection);
 
@@ -1147,61 +1124,28 @@ class AppointmentController extends Controller
             ??= $this->scheduleService->startTimesFor($date, $barberId);
     }
 
-    private function dashboardOccupiedIntervals(iterable $appointments): array
+    private function dashboardOccupiedStartTimes(iterable $appointments): array
     {
-        $intervals = [];
+        $startTimes = [];
 
         foreach ($appointments as $appointment) {
-            $start = $this->dashboardTimeToMinutes(
+            $startTimes[(int) $appointment->barber_user_id][] = $this->dashboardTimeToMinutes(
                 substr((string) $appointment->appointment_time, 0, 5),
             );
-            $duration = max(
-                1,
-                (int) ($appointment->duration_minutes ?? $appointment->service?->duration ?? 60),
-            );
-            $intervals[(int) $appointment->barber_user_id][] = [
-                'start' => $start,
-                'end' => $start + $duration,
-            ];
         }
 
-        return $intervals;
+        return $startTimes;
     }
 
     private function dashboardAvailableBarberCount(
         array $activeBarberIds,
-        array $occupiedIntervals,
+        array $occupiedStartTimes,
         int $slotMinutes,
-        array $explicitOpenSlotBarberIds,
     ): int {
-        $available = 0;
-
-        foreach ($activeBarberIds as $barberId) {
-            if (in_array($barberId, $explicitOpenSlotBarberIds, true)) {
-                $hasBookingAtSameStartTime = collect($occupiedIntervals[$barberId] ?? [])
-                    ->contains(fn (array $interval): bool => $interval['start'] === $slotMinutes);
-
-                if (! $hasBookingAtSameStartTime) {
-                    $available++;
-                }
-
-                continue;
-            }
-
-            $isOccupied = false;
-            foreach ($occupiedIntervals[$barberId] ?? [] as $interval) {
-                if ($slotMinutes >= $interval['start'] && $slotMinutes < $interval['end']) {
-                    $isOccupied = true;
-                    break;
-                }
-            }
-
-            if (! $isOccupied) {
-                $available++;
-            }
-        }
-
-        return $available;
+        return count(array_filter(
+            $activeBarberIds,
+            fn (int $barberId): bool => ! in_array($slotMinutes, $occupiedStartTimes[$barberId] ?? [], true),
+        ));
     }
 
     private function dashboardSlotIsPast(

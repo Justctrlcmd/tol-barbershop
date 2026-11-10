@@ -128,7 +128,7 @@ class AppointmentBookingService
             ->values()
             ->all();
 
-        $existingAppointments = Appointment::with('service:id,duration')
+        $existingAppointments = Appointment::query()
             ->where('barber_user_id', $barberUserId)
             ->where('appointment_date', '>=', $appointmentDate)
             ->where('appointment_date', '<', $date->addDay()->toDateString())
@@ -140,48 +140,22 @@ class AppointmentBookingService
             )
             ->orderBy('appointment_time')
             ->lockForUpdate()
-            ->get();
+            ->get(['id', 'appointment_time']);
 
-        $explicitOpenSlotTimes = $this->scheduleService->openSlotTimesFor(
-            $appointmentDate,
-            $barberUserId,
-            true,
-        );
-
-        $occupiedIntervals = $existingAppointments->map(function (Appointment $appointment): array {
-            $startMinutes = $this->minutesFromStoredTime((string) $appointment->appointment_time);
-            $duration = max(1, (int) ($appointment->duration_minutes ?? $appointment->service?->duration ?? 60));
-
-            return [
-                'start' => $startMinutes,
-                'end' => $startMinutes + $duration,
-            ];
-        })->all();
+        $occupiedStartTimes = $existingAppointments->map(
+            fn (Appointment $appointment): int => $this->minutesFromStoredTime((string) $appointment->appointment_time),
+        )->all();
 
         foreach ($parsedSlots as $slot) {
-            $service = $resources['services']->get($slot['service_id']);
             $start = $slot['start_minutes'];
-            $end = $start + max(1, (int) $service->duration);
-            $isExplicitOpenSlot = in_array(
-                $this->scheduleService->normalizeTime($slot['appointment_time']),
-                $explicitOpenSlotTimes,
-                true,
-            );
-            $hasBookingAtSameStartTime = collect($occupiedIntervals)
-                ->contains(fn (array $occupied): bool => $occupied['start'] === $start);
-
-            if (! $isExplicitOpenSlot || $hasBookingAtSameStartTime) {
-                foreach ($occupiedIntervals as $occupied) {
-                    if ($start < $occupied['end'] && $end > $occupied['start']) {
-                        $time12 = CarbonImmutable::parse($slot['appointment_time'])->format('g:i A');
-                        throw ValidationException::withMessages([
-                            $slot['field'] => "The time slot {$time12} overlaps another booking.",
-                        ]);
-                    }
-                }
+            if (in_array($start, $occupiedStartTimes, true)) {
+                $time12 = CarbonImmutable::parse($slot['appointment_time'])->format('g:i A');
+                throw ValidationException::withMessages([
+                    $slot['field'] => "The time slot {$time12} is already booked.",
+                ]);
             }
 
-            $occupiedIntervals[] = ['start' => $start, 'end' => $end];
+            $occupiedStartTimes[] = $start;
         }
 
         return $resources;
@@ -225,7 +199,7 @@ class AppointmentBookingService
         foreach ($serviceIds as $serviceId) {
             $service = $services->get($serviceId);
 
-            if (! $service || ! $service->is_active || (int) $service->duration < 1) {
+            if (! $service || ! $service->is_active) {
                 throw ValidationException::withMessages([
                     'service_id' => 'The selected service is not active.',
                 ]);

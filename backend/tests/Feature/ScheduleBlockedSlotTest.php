@@ -90,6 +90,18 @@ test('blocked barber start time stays independent from longer bookings and can b
         'status' => 'confirmed',
     ])->assertCreated();
 
+    $this->postJson('/api/v1/appointments', [
+        'booking_customer_id' => $customer->id,
+        'service_id' => $service->id,
+        'barber_user_id' => $barber->id,
+        'appointment_date' => '2026-09-08',
+        'appointment_time' => '10:00',
+        'duration_minutes' => 1,
+        'open_slot_times' => ['10:00'],
+        'price' => 200,
+        'status' => 'confirmed',
+    ])->assertUnprocessable()->assertJsonValidationErrors('appointment_time');
+
     $slotId = ScheduleBlockedSlot::value('id');
     $this->deleteJson("/api/v1/schedule-blocked-slots/{$slotId}")->assertOk();
 

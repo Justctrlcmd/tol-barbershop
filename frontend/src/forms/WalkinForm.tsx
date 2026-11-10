@@ -108,14 +108,14 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
         setTimeOptions(day.time_slots.map((time) => ({
           value: time,
           label: formatTime12(time),
-          disabled: isTimeSlotUnavailable(time, Number(selectedService?.duration ?? 60), [], [], day.blocked_slots),
+          disabled: isTimeSlotUnavailable(time, [], day.blocked_slots),
         })));
       })
       .catch(() => {
         setTimeOptions([]);
         toast.error("Failed to load available schedule times");
       });
-  }, [selectedBarberId, selectedDateValue, selectedService?.duration]);
+  }, [selectedBarberId, selectedDateValue]);
 
   const onFormInvalid: SubmitErrorHandler<WalkinSchemaValues> = () => {
     toast.error("All fields are required");

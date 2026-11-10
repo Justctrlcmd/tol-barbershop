@@ -122,62 +122,59 @@ test('scheduled bookings enforce active resources and all business date boundari
     expect(Appointment::count())->toBe(0);
 });
 
-test('create and reschedule reject duration overlaps while adjacent slots remain available', function () {
+test('create and reschedule reserve exact start times regardless of duration', function () {
     $firstCustomer = createAppointmentIntegrityCustomer();
     $secondCustomer = createAppointmentIntegrityCustomer();
     $manager = createAppointmentIntegrityUser('manager');
     $barber = createAppointmentIntegrityUser('barber');
     $otherBarber = createAppointmentIntegrityUser('barber');
-    $longService = createAppointmentIntegrityService(['duration' => 90]);
+    $longService = createAppointmentIntegrityService(['duration' => 180]);
     $shortService = createAppointmentIntegrityService([
         'name' => 'Short Haircut',
         'duration' => 30,
     ]);
-
     Sanctum::actingAs($manager);
-    $this->postJson(
-        '/api/v1/appointments',
-        appointmentIntegrityPayload($firstCustomer, $barber, $longService, time: '09:00'),
-    )->assertSuccessful();
 
-    expect(Appointment::where('barber_user_id', $barber->id)->where('status', 'pending')->count())->toBe(1);
-    expect(Appointment::whereDate('appointment_date', '2026-07-17')->count())->toBe(1);
-    expect(Appointment::firstOrFail()->duration_minutes)->toBe(90);
+    $this->postJson('/api/v1/appointments', [
+        ...appointmentIntegrityPayload($firstCustomer, $barber, $longService, time: '12:30'),
+        'duration_minutes' => 1,
+    ])->assertCreated()->assertJsonPath('data.duration_minutes', 180);
 
     $this->postJson(
         '/api/v1/appointments',
-        appointmentIntegrityPayload($secondCustomer, $barber, $shortService, time: '10:00'),
-    )
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors('appointment_time');
+        appointmentIntegrityPayload($secondCustomer, $barber, $shortService, time: '13:00'),
+    )->assertCreated();
 
     $this->postJson(
         '/api/v1/appointments',
-        appointmentIntegrityPayload($secondCustomer, $barber, $shortService, time: '11:00'),
-    )->assertSuccessful();
+        appointmentIntegrityPayload($secondCustomer, $barber, $longService, time: '11:00'),
+    )->assertCreated();
 
-    $rescheduled = Appointment::create([
-        'booking_customer_id' => $secondCustomer->id,
-        'service_id' => $shortService->id,
-        'barber_user_id' => $otherBarber->id,
-        'appointment_date' => '2026-07-17',
-        'appointment_time' => '13:00',
-        'duration_minutes' => 30,
-        'price' => 300,
-        'status' => 'confirmed',
-        'active_slot_key' => "{$otherBarber->id}|2026-07-17|13:00",
-    ]);
+    $this->postJson(
+        '/api/v1/appointments',
+        appointmentIntegrityPayload($secondCustomer, $barber, $shortService, time: '12:30'),
+    )->assertUnprocessable()->assertJsonValidationErrors('appointment_time');
 
-    Sanctum::actingAs($manager);
+    $created = $this->postJson(
+        '/api/v1/appointments',
+        appointmentIntegrityPayload($secondCustomer, $otherBarber, $shortService, time: '12:30', status: 'confirmed'),
+    )->assertCreated();
+    $rescheduled = Appointment::findOrFail($created->json('data.id'));
+
     $this->putJson(
         "/api/v1/appointments/{$rescheduled->id}",
-        appointmentIntegrityPayload($secondCustomer, $barber, $shortService, time: '10:00', status: 'confirmed'),
-    )
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors('appointment_time');
-
+        appointmentIntegrityPayload($secondCustomer, $barber, $shortService, time: '13:00', status: 'confirmed'),
+    )->assertUnprocessable()->assertJsonValidationErrors('appointment_time');
     expect($rescheduled->fresh()->barber_user_id)->toBe($otherBarber->id);
-    expect(substr($rescheduled->fresh()->appointment_time, 0, 5))->toBe('13:00');
+
+    $updated = appointmentIntegrityPayload($secondCustomer, $barber, $longService, time: '14:00', status: 'confirmed');
+    $this->putJson("/api/v1/appointments/{$rescheduled->id}", $updated)
+        ->assertOk()->assertJsonPath('data.duration_minutes', 180);
+    $this->putJson("/api/v1/appointments/{$rescheduled->id}", $updated)->assertOk();
+
+    expect($rescheduled->fresh()->barber_user_id)->toBe($barber->id)
+        ->and(substr($rescheduled->fresh()->appointment_time, 0, 5))->toBe('14:00')
+        ->and(Appointment::count())->toBe(4);
 });
 
 test('status transitions are one way and future appointments cannot be completed or marked no show', function () {

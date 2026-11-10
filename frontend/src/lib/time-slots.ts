@@ -5,7 +5,6 @@ export type TimeOption = {
 
 type OccupiedTimeSlot = {
   appointment_time: string;
-  duration_minutes: number;
 };
 
 function timeToMinutes(value: string): number | null {
@@ -24,9 +23,7 @@ function timeToMinutes(value: string): number | null {
 
 export function isTimeSlotUnavailable(
   appointmentTime: string,
-  durationMinutes: number,
   occupiedSlots: OccupiedTimeSlot[],
-  explicitOpenSlotTimes: string[] = [],
   blockedSlots: OccupiedTimeSlot[] = [],
 ): boolean {
   const start = timeToMinutes(appointmentTime);
@@ -40,22 +37,11 @@ export function isTimeSlotUnavailable(
   });
   if (isBlockedStartTime) return true;
 
-  const isExplicitOpenSlot = explicitOpenSlotTimes.some(
-    (time) => timeToMinutes(time) === start,
-  );
-  const hasBookingAtSameStartTime = occupiedSlots.some(
-    (slot) => timeToMinutes(slot.appointment_time) === start,
-  );
-
-  if (isExplicitOpenSlot && !hasBookingAtSameStartTime) return false;
-
-  const end = start + Math.max(1, durationMinutes);
   return occupiedSlots.some((slot) => {
     const occupiedStart = timeToMinutes(slot.appointment_time);
     if (occupiedStart === null) return true;
 
-    const occupiedEnd = occupiedStart + Math.max(1, slot.duration_minutes);
-    return start < occupiedEnd && end > occupiedStart;
+    return start === occupiedStart;
   });
 }
 

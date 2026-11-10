@@ -81,7 +81,6 @@ export function AssistedBookingForm({
     [],
   );
   const [blockedSlots, setBlockedSlots] = useState<OccupiedAppointmentSlot[]>([]);
-  const [explicitOpenSlotTimes, setExplicitOpenSlotTimes] = useState<string[]>([]);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const rateLimit = useRateLimit({
@@ -146,14 +145,12 @@ export function AssistedBookingForm({
         if (!active) return;
         setOccupiedSlots(availability.occupied_slots);
         setBlockedSlots(availability.blocked_slots);
-        setExplicitOpenSlotTimes(availability.open_slot_times);
         setAvailableTimes(availability.time_slots);
       })
       .catch(() => {
         if (!active) return;
         setOccupiedSlots([]);
         setBlockedSlots([]);
-        setExplicitOpenSlotTimes([]);
         setAvailableTimes([]);
         toast.error("Failed to check available times.");
       })
@@ -176,16 +173,10 @@ export function AssistedBookingForm({
         label: formatTime12(time),
         disabled:
           !selectedService ||
-          isTimeSlotUnavailable(
-            time,
-            Number(selectedService.duration ?? 60),
-            occupiedSlots,
-            explicitOpenSlotTimes,
-            blockedSlots,
-          ) ||
+          isTimeSlotUnavailable(time, occupiedSlots, blockedSlots) ||
           isPastTime(time, selectedDate),
       })),
-    [availableTimes, blockedSlots, explicitOpenSlotTimes, occupiedSlots, selectedDate, selectedService],
+    [availableTimes, blockedSlots, occupiedSlots, selectedDate, selectedService],
   );
 
   const isDateDisabled = (day: Date): boolean => {
@@ -210,7 +201,6 @@ export function AssistedBookingForm({
     setSelectedDate(undefined);
     setOccupiedSlots([]);
     setBlockedSlots([]);
-    setExplicitOpenSlotTimes([]);
     setAvailableTimes([]);
     setCheckingAvailability(false);
     onOpenChange(false);
@@ -240,7 +230,6 @@ export function AssistedBookingForm({
       setSelectedDate(undefined);
       setOccupiedSlots([]);
       setBlockedSlots([]);
-      setExplicitOpenSlotTimes([]);
       setAvailableTimes([]);
       setCheckingAvailability(false);
       onOpenChange(false);
