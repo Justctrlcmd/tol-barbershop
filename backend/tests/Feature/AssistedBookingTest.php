@@ -201,7 +201,7 @@ test('matching by contact does not use a crm email omitted from the assisted boo
     Notification::assertNothingSent();
 });
 
-test('assisted booking uses duration conflicts and rejects an occupied time', function () {
+test('assisted booking ignores duration and rejects only an occupied start time', function () {
     [$manager, $barber, $service] = assistedBookingResources();
     $existingCustomer = BookingCustomer::create([
         'fullname' => 'Existing Customer',
@@ -223,12 +223,16 @@ test('assisted booking uses duration conflicts and rejects an occupied time', fu
 
     $this->postJson('/api/v1/assisted-bookings', assistedBookingPayload($barber, $service, [
         'appointment_time' => '10:00',
-    ]))
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors('appointment_time');
+    ]))->assertCreated()->assertJsonPath('data.duration_minutes', 90);
 
-    expect(Appointment::count())->toBe(1)
-        ->and(BookingCustomer::count())->toBe(1);
+    $this->postJson('/api/v1/assisted-bookings', assistedBookingPayload($barber, $service, [
+        'customer_name' => 'Duplicate Attempt',
+        'appointment_time' => '09:00',
+        'duration_minutes' => 1,
+    ]))->assertUnprocessable()->assertJsonValidationErrors('appointment_time');
+
+    expect(Appointment::count())->toBe(2)
+        ->and(BookingCustomer::count())->toBe(2);
 });
 
 test('no show remains in the system without sending customer email', function () {

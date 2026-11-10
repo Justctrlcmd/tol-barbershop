@@ -243,7 +243,7 @@ test('open slot activity is recorded for additions and removals', function () {
     expect(ScheduleOpenSlotActivity::query()->where('action', 'removed')->count())->toBe(1);
 });
 
-test('an explicit open slot overrides a standard booking duration', function () {
+test('custom start times are independent and cannot bypass an occupied start time', function () {
     $manager = scheduleUser('manager');
     $barber = scheduleUser('barber');
     $firstCustomer = BookingCustomer::create([

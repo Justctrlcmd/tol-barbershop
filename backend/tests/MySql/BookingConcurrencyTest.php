@@ -14,7 +14,7 @@ use Tests\TestCase;
 
 uses(TestCase::class);
 
-test('simultaneous booking attempts create only one active appointment', function () {
+test('simultaneous booking attempts reserve only exact start times', function (array $times, array $expectedExitCodes) {
     if (DB::getDriverName() !== 'mysql') {
         $this->markTestSkipped('This concurrency test requires MySQL.');
     }
@@ -31,7 +31,7 @@ test('simultaneous booking attempts create only one active appointment', functio
     $service = Service::create([
         'name' => 'Concurrency Haircut',
         'description' => 'MySQL booking concurrency test',
-        'duration' => 60,
+        'duration' => 480,
         'price' => 300,
         'is_active' => true,
     ]);
@@ -47,7 +47,8 @@ test('simultaneous booking attempts create only one active appointment', functio
 
     DB::disconnect();
 
-    foreach ([$firstCustomer->id, $secondCustomer->id] as $customerId) {
+    foreach ([$firstCustomer->id, $secondCustomer->id] as $index => $customerId) {
+        $time = $times[$index];
         $pid = pcntl_fork();
 
         if ($pid === -1) {
@@ -63,7 +64,7 @@ test('simultaneous booking attempts create only one active appointment', functio
             }
 
             try {
-                DB::transaction(function () use ($customerId, $barber, $service, $date): void {
+                DB::transaction(function () use ($customerId, $barber, $service, $date, $time): void {
                     $bookingService = app(AppointmentBookingService::class);
                     $resources = $bookingService->validateAndLock(
                         $customerId,
@@ -71,7 +72,7 @@ test('simultaneous booking attempts create only one active appointment', functio
                         $date,
                         [[
                             'service_id' => $service->id,
-                            'appointment_time' => '09:00',
+                            'appointment_time' => $time,
                         ]],
                         1,
                     );
@@ -81,11 +82,11 @@ test('simultaneous booking attempts create only one active appointment', functio
                         'service_id' => $service->id,
                         'barber_user_id' => $barber->id,
                         'appointment_date' => $date,
-                        'appointment_time' => '09:00',
+                        'appointment_time' => $time,
                         'duration_minutes' => $service->duration,
                         'price' => $service->price,
                         'status' => 'pending',
-                        'active_slot_key' => $bookingService->activeSlotKey($barber->id, $date, '09:00'),
+                        'active_slot_key' => $bookingService->activeSlotKey($barber->id, $date, $time),
                         'is_walkin' => false,
                         'customer_name_snapshot' => $resources['customer']?->fullname,
                         'service_name_snapshot' => $service->name,
@@ -115,6 +116,9 @@ test('simultaneous booking attempts create only one active appointment', functio
     DB::purge();
     DB::reconnect();
 
-    expect($exitCodes)->toBe([0, 10]);
-    expect(Appointment::query()->count())->toBe(1);
-});
+    expect($exitCodes)->toBe($expectedExitCodes);
+    expect(Appointment::query()->count())->toBe(count(array_filter($expectedExitCodes, fn (int $code): bool => $code === 0)));
+})->with([
+    'same start time' => [['09:00', '09:00'], [0, 10]],
+    'different start times within a service duration' => [['12:30', '13:00'], [0, 0]],
+]);
